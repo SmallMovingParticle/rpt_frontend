@@ -43,6 +43,17 @@ export type LeadCreateInput = {
   contact_consent: true;
 };
 
+export type Metrics = {
+  total_leads: number;
+  messages_delivered: number;
+  messages_delivery_rate: number | null;
+  calls_completed: number;
+  calls_completion_rate: number | null;
+  calls_reached_rate: number | null;
+  review_rate: number | null;
+  booked_rate: number | null;
+};
+
 export type Snapshot = {
   counts: Record<LeadStage, number>;
   leads: Lead[];
@@ -51,6 +62,7 @@ export type Snapshot = {
   templates: Array<Record<string, unknown>>;
   providers: Array<Record<string, unknown>>;
   system: Record<string, number>;
+  metrics?: Metrics;
   generated_at?: string;
 };
 

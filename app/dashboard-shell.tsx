@@ -269,11 +269,42 @@ function ReviewPage({ snapshot, action, onResolved }: { snapshot: Snapshot; acti
       <Panel title={selected?.full_name ?? 'Review details'}>{selected && <><dl className="detail-list"><div><dt>Reason</dt><dd>{selected.review_reason}</dd></div><div><dt>Current status</dt><dd><StatusBadge stage="attention" /></dd></div><div><dt>Safe next step</dt><dd>Reconcile the provider result before any retry.</dd></div></dl><Alert tone="warning">Unknown create outcomes are never retried automatically.</Alert><button className="primary full" disabled={resolving} onClick={resolveReview}>{resolving ? 'Resolving…' : 'Resolve review'}</button></>}</Panel></div>}</>;
 }
 
+function leadMovementSeries(snapshot: Snapshot) {
+  // Buckets leads by creation date over the trailing fortnight. Days with no
+  // leads stay in the series as zero, so the shape of the chart is honest.
+  const days = 14;
+  const buckets = new Map<string, number>();
+  const labels: string[] = [];
+  const today = new Date();
+  for (let offset = days - 1; offset >= 0; offset -= 1) {
+    const day = new Date(today);
+    day.setDate(today.getDate() - offset);
+    const key = day.toISOString().slice(0, 10);
+    labels.push(key);
+    buckets.set(key, 0);
+  }
+  for (const lead of snapshot.leads) {
+    const key = String(lead.created_at ?? '').slice(0, 10);
+    if (buckets.has(key)) buckets.set(key, (buckets.get(key) ?? 0) + 1);
+  }
+  const points = labels.map((key) => ({
+    label: new Date(`${key}T00:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+    value: buckets.get(key) ?? 0,
+  }));
+  return { points, max: Math.max(...points.map((point) => point.value), 0) };
+}
+
 function AnalyticsPage({ snapshot }: { snapshot: Snapshot }) {
   const total = Object.values(snapshot.counts).reduce((sum, value) => sum + value, 0);
+  // Every figure below comes from the snapshot. Where the backend has no data
+  // yet it sends null, and we show a dash rather than inventing a number.
+  const m = snapshot.metrics;
+  const pct = (value: number | null | undefined) => (value === null || value === undefined ? '—' : `${value}%`);
+  const num = (value: number | null | undefined) => (value === null || value === undefined ? '—' : value.toLocaleString());
+  const movement = leadMovementSeries(snapshot);
   return <><PageTitle title="Analytics" subtitle="A concise view of pipeline movement and outreach outcomes." tools={<button className="primary" type="button" onClick={() => exportLeadReport(snapshot)}>Export report</button>} /><StatusTiles counts={snapshot.counts} />
-    <div className="two-col"><Panel title="Lead movement · last 14 days"><div className="bar-chart">{[42,55,49,68,61,74,83,70,88,79,91,84,96,89].map((height,index)=><i key={index} style={{height:`${height}%`}}><span /></i>)}</div><div className="axis"><span>Aug 15</span><span>Aug 28</span></div></Panel><Panel title="Cadence outcomes"><Metric label="Reached" value="62%" width="62%" /><Metric label="Interested" value="38%" width="38%" /><Metric label="Booked" value={`${Math.round(snapshot.counts.booked / Math.max(total,1) * 100)}%`} width={`${Math.round(snapshot.counts.booked / Math.max(total,1) * 100)}%`} /><Metric label="Needs review" value={`${snapshot.counts.attention}`} width="18%" tone="amber" /></Panel></div>
-    <Panel title="Operational indicators"><div className="metric-grid"><Stat label="Total leads" value={String(total)} trend="↑ 11%" /><Stat label="Messages delivered" value="1,248" trend="98.4%" /><Stat label="Calls completed" value="342" trend="72.8%" /><Stat label="Review rate" value="0.2%" trend="Within target" /></div></Panel></>;
+    <div className="two-col"><Panel title="Leads created · last 14 days">{movement.max === 0 ? <Empty title="No leads yet" body="Leads created in the last fourteen days will appear here." /> : <><div className="bar-chart">{movement.points.map((point)=><i key={point.label} title={`${point.label}: ${point.value}`} style={{height:`${Math.round(point.value / movement.max * 100)}%`}}><span /></i>)}</div><div className="axis"><span>{movement.points[0]?.label}</span><span>{movement.points[movement.points.length-1]?.label}</span></div></>}</Panel><Panel title="Cadence outcomes"><Metric label="Calls reaching a person" value={pct(m?.calls_reached_rate)} width={`${m?.calls_reached_rate ?? 0}%`} /><Metric label="SMS delivered" value={pct(m?.messages_delivery_rate)} width={`${m?.messages_delivery_rate ?? 0}%`} /><Metric label="Booked" value={pct(m?.booked_rate)} width={`${m?.booked_rate ?? 0}%`} /><Metric label="Needs review" value={`${snapshot.counts.attention}`} width={`${m?.review_rate ?? 0}%`} tone="amber" /></Panel></div>
+    <Panel title="Operational indicators"><div className="metric-grid"><Stat label="Total leads" value={String(total)} trend={`${snapshot.counts.closed} closed`} /><Stat label="SMS delivered" value={num(m?.messages_delivered)} trend={pct(m?.messages_delivery_rate)} /><Stat label="Calls completed" value={num(m?.calls_completed)} trend={pct(m?.calls_completion_rate)} /><Stat label="Review rate" value={pct(m?.review_rate)} trend={`${snapshot.counts.attention} of ${total}`} /></div></Panel></>;
 }
 
 function AdministrationPage({ snapshot }: { snapshot: Snapshot }) {
