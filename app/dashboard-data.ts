@@ -45,7 +45,10 @@ export type LeadCreateInput = {
 
 export type Metrics = {
   total_leads: number;
+  messages_sent: number;
   messages_delivered: number;
+  messages_failed: number;
+  messages_pending: number;
   messages_delivery_rate: number | null;
   calls_completed: number;
   calls_completion_rate: number | null;
