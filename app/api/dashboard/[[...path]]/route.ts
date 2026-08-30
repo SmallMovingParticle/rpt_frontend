@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getChatGPTUser, isAllowedDashboardEmail } from '../../../chatgpt-auth';
+import { getStaffUser } from '../../../session';
 
 const ALLOWED_METHODS = new Set(['GET', 'POST', 'PATCH', 'PUT', 'DELETE']);
 const ALLOWED_PATH = /^(snapshot|leads(?:\/[0-9a-f-]+(?:\/(?:cadence|sms|outreach-events\/\d+|message-overrides\/\d+))?)?|review\/[0-9a-f-]+\/resolve|cadence-steps\/\d+|message-templates\/\d+)$/i;
@@ -9,16 +9,12 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path?: s
     return NextResponse.json({ detail: 'method not allowed' }, { status: 405 });
   }
 
-  const user = await getChatGPTUser();
-  const localPreview =
-    process.env.NODE_ENV !== 'production' &&
-    process.env.DASHBOARD_ALLOW_LOCAL_DEMO === 'true';
-  if (!user && !localPreview) {
+  // A valid signed session is required in every environment. The old build
+  // allowed an unauthenticated local preview here; that is deliberately gone,
+  // because this route reaches real patient data whatever NODE_ENV says.
+  const user = await getStaffUser();
+  if (!user) {
     return NextResponse.json({ detail: 'authentication required' }, { status: 401 });
-  }
-
-  if (process.env.NODE_ENV === 'production' && (!user || !isAllowedDashboardEmail(user.email))) {
-    return NextResponse.json({ detail: 'workspace access required' }, { status: 403 });
   }
 
   const { path = [] } = await context.params;
@@ -50,8 +46,8 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path?: s
     headers: {
       'Content-Type': 'application/json',
       'X-Dashboard-Token': token,
-      'X-Dashboard-User-ID': user?.userId ?? 'local-preview',
-      'X-Dashboard-User-Email': user?.email ?? 'local-preview@localhost',
+      'X-Dashboard-User-ID': user.userId,
+      'X-Dashboard-User-Email': user.email,
       'X-Trace-ID': crypto.randomUUID(),
     },
     body: request.method === 'GET' ? undefined : await request.text(),
