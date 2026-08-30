@@ -1,4 +1,4 @@
-export type LeadStage = 'new' | 'cadence' | 'attention' | 'booked';
+export type LeadStage = 'new' | 'cadence' | 'attention' | 'booked' | 'closed';
 
 export type Lead = {
   id: string;
@@ -65,7 +65,7 @@ export type LeadDetail = {
 };
 
 export const emptySnapshot: Snapshot = {
-  counts: { new: 0, cadence: 0, attention: 0, booked: 0 },
+  counts: { new: 0, cadence: 0, attention: 0, booked: 0, closed: 0 },
   leads: [],
   appointments: [],
   cadence: [],

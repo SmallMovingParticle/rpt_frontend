@@ -10,6 +10,7 @@ const statusMeta: Record<LeadStage, { label: string }> = {
   cadence: { label: 'In Cadence' },
   attention: { label: 'Needs Attention' },
   booked: { label: 'Booked' },
+  closed: { label: 'Closed' },
 };
 
 const locations = ['Dana Point', 'Laguna Niguel', 'Mission Viejo'];
@@ -175,7 +176,7 @@ export function DashboardShell({ displayName, localPreview = false }: { displayN
             <span className={`connection ${live ? 'live' : ''}`}><i />{live ? 'Connected' : 'Preview'}</span><button className="avatar" type="button" title={displayName}>{initials(displayName)}</button>
           </div>
         </header>
-        <main className="content">{renderPage(pathname, search.get('view'), search.get('search'), search.get('stage'), visibleSnapshot, detail, router, action, () => setAddingLead(true), resolveLeadReview, publishTemplate)}</main>
+        <main className="content">{renderPage(pathname, search.get('view'), search.get('search'), search.get('stage'), visibleSnapshot, !live, detail, router, action, () => setAddingLead(true), resolveLeadReview, publishTemplate)}</main>
       </div>
       {notice && <div className="toast" role="status">✓ {notice}</div>}
       {addingLead && <AddLeadDialog defaultLocation={selectedLocation === 'All Locations' ? locations[0] : selectedLocation} onAdd={addLead} onClose={() => setAddingLead(false)} />}
@@ -183,13 +184,13 @@ export function DashboardShell({ displayName, localPreview = false }: { displayN
   );
 }
 
-function renderPage(path: string, view: string | null, query: string | null, stage: string | null, snapshot: Snapshot, detail: LeadDetail | null, router: ReturnType<typeof useRouter>, action: DashboardAction, openAddLead: () => void, onReviewResolved: (id: string) => void, onTemplatePublished: (id: string, body: string) => void) {
+function renderPage(path: string, view: string | null, query: string | null, stage: string | null, snapshot: Snapshot, loading: boolean, detail: LeadDetail | null, router: ReturnType<typeof useRouter>, action: DashboardAction, openAddLead: () => void, onReviewResolved: (id: string) => void, onTemplatePublished: (id: string, body: string) => void) {
   const requestedLeadId = path.match(/^\/leads\/([0-9a-f-]+)/i)?.[1];
   // Narrowed to a non-null LeadDetail so the lead routes below typecheck; the
   // runtime behaviour is unchanged.
   const leadDetail = requestedLeadId && detail && String(detail.lead.id) === requestedLeadId ? detail : null;
   if (requestedLeadId && !leadDetail) return <Empty title="Loading lead" body="Retrieving the latest database record and cadence activity." />;
-  if (path === '/') return <HomePage snapshot={snapshot} />;
+  if (path === '/') return <HomePage snapshot={snapshot} loading={loading} />;
   if (path === '/leads') return <LeadsPage key={`${view}-${query}-${stage}`} snapshot={snapshot} mode={view === 'list' ? 'list' : 'board'} initialQuery={query ?? ''} initialStage={stage as LeadStage | null} router={router} onAddLead={openAddLead} />;
   if (path === '/appointments') return <AppointmentsPage snapshot={snapshot} />;
   if (path === '/review') return <ReviewPage snapshot={snapshot} action={action} onResolved={onReviewResolved} />;
@@ -207,10 +208,11 @@ function renderPage(path: string, view: string | null, query: string | null, sta
   return <Empty title="Page not found" body="Return to the lead pipeline to continue." />;
 }
 
-function HomePage({ snapshot }: { snapshot: Snapshot }) {
-  const work = snapshot.leads.slice(0, 5);
+function HomePage({ snapshot, loading }: { snapshot: Snapshot; loading: boolean }) {
+  // Today's Work is a to-do list, so finished leads do not belong in it.
+  const work = snapshot.leads.filter((lead) => lead.stage !== 'closed' && lead.stage !== 'booked').slice(0, 5);
   return <><PageTitle title="Rausch Outreach" subtitle="Good morning. Here is today’s operational picture." />
-    <StatusTiles counts={snapshot.counts} />
+    <StatusTiles counts={snapshot.counts} loading={loading} />
     <div className="two-col wide-left"><Panel title="Today’s Work"><DataTable heads={['Lead', 'Status', 'Next step', 'Due', 'Action']}>{work.map((lead) => <tr key={lead.id}><td><Link href={`/leads/${lead.id}`}>{lead.full_name}</Link></td><td><StatusBadge stage={lead.stage} /></td><td>{lead.next_step ?? '—'}</td><td>{time(lead.next_scheduled_for)}</td><td><Link className="text-action" href={`/leads/${lead.id}`}>Open →</Link></td></tr>)}</DataTable><div className="panel-action"><Link className="primary" href={work[0] ? `/leads/${work[0].id}` : '/leads'}>Start next task</Link></div></Panel>
       <Panel title="Provider Overview">{snapshot.providers.map((provider) => <div className="provider-row" key={String(provider.name)}><ProviderIcon name={String(provider.name)} /><div><strong>{String(provider.name)}</strong><span>{String(provider.use ?? provider.mode)}</span></div><StatusText status={String(provider.status)} /><b>{provider.balance ? String(provider.balance) : 'Not exposed'}</b></div>)}<Link className="text-action footer-link" href="/administration/providers">View provider usage →</Link></Panel></div>
     <Panel title="Next Appointments"><div className="appointment-strip">{snapshot.appointments.slice(0, 3).map((item, index) => <div key={String(item.id ?? index)}><strong>{time(String(item.start_utc ?? ''))}</strong><span>{String(item.full_name ?? 'Scheduled lead')}</span><small>{String(item.location ?? 'Rausch PT')}</small></div>)}</div></Panel></>;
@@ -227,7 +229,7 @@ function LeadsPage({ snapshot, mode, initialQuery, initialStage, router, onAddLe
   );
   return <><PageTitle title="Lead Pipeline" subtitle="Select a lead to open their workspace." tools={<><div className="segmented" aria-label="Lead view"><Link className={mode === 'list' ? 'selected' : ''} href="/leads?view=list"><span className="view-icon">☷</span>List</Link><Link className={mode === 'board' ? 'selected' : ''} href="/leads"><span className="view-icon">▦</span>Board</Link></div><label className="filter-control"><span className="sr-only">Filter by owner</span><select value={owner} onChange={(event) => setOwner(event.target.value)}><option>All Owners</option>{availableOwners.map((item) => <option key={item}>{item}</option>)}</select></label><label className="search-field"><span aria-hidden="true">⌕</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search leads" /></label><button className="primary" type="button" onClick={onAddLead}>Add Lead</button></>} />
     {initialStage && <div className="active-filter">Showing {statusMeta[initialStage].label} leads <Link href="/leads">Clear filter</Link></div>}
-    {!leads.length ? <Panel><Empty title="No matching leads" body="Try another owner, location, or search term." /></Panel> : mode === 'board' ? <section className="pipeline">{(['new','cadence','attention','booked'] as LeadStage[]).map((stage) => <article className={`pipeline-column ${stage}`} key={stage}><header><StatusGlyph stage={stage} /><h2>{statusMeta[stage].label}</h2><small>{leads.filter((lead) => lead.stage === stage).length}</small></header><div className="lead-stack">{leads.filter((lead) => lead.stage === stage).map((lead) => <LeadCard lead={lead} key={lead.id} onOpen={() => router.push(`/leads/${lead.id}`)} />)}</div></article>)}</section> :
+    {!leads.length ? <Panel><Empty title="No matching leads" body="Try another owner, location, or search term." /></Panel> : mode === 'board' ? <section className="pipeline">{(['new','cadence','attention','booked','closed'] as LeadStage[]).map((stage) => <article className={`pipeline-column ${stage}`} key={stage}><header><StatusGlyph stage={stage} /><h2>{statusMeta[stage].label}</h2><small>{leads.filter((lead) => lead.stage === stage).length}</small></header><div className="lead-stack">{leads.filter((lead) => lead.stage === stage).map((lead) => <LeadCard lead={lead} key={lead.id} onOpen={() => router.push(`/leads/${lead.id}`)} />)}</div></article>)}</section> :
       <Panel><DataTable heads={['Lead', 'Status', 'Owner', 'Source', 'Next step', 'Last contact', '']} >{leads.map((lead) => <tr key={lead.id} className={`row-${lead.stage}`}><td><strong>{lead.full_name}</strong><small>{lead.display_id}</small></td><td><StatusBadge stage={lead.stage} /></td><td>{lead.owner ?? 'Unassigned'}</td><td>{lead.source}</td><td>{lead.next_step ?? 'No planned action'}</td><td>{relative(lead.last_contacted_at)}</td><td><Link className="row-link" href={`/leads/${lead.id}`} aria-label={`Open ${lead.full_name}`}>→</Link></td></tr>)}</DataTable></Panel>}</>;
 }
 
@@ -325,16 +327,20 @@ function LeadFrame({ detail, tab, action, children }: { detail: LeadDetail; tab:
   const total = Number(lead.cadence_total ?? detail.events.length);
   const [busy,setBusy] = useState(false);
   const cadencePaused = lead.cadence_state === 'paused';
+  const cadenceOver = stage === 'closed' || stage === 'booked';
   async function toggleCadence(){ setBusy(true); try { await action(`leads/${id}/cadence`,'POST',{action: cadencePaused ? 'resume':'pause'}); } finally {setBusy(false);} }
-  return <><div className="breadcrumbs"><Link href="/leads">Lead Pipeline</Link><span>/</span><span>{String(lead.display_id)}</span><span>/</span><strong>{lead.full_name}</strong></div><section className="lead-header"><div className="lead-avatar">{initials(lead.full_name)}</div><div className="lead-identity"><h1>{lead.full_name}</h1><span>☎ {phone}</span></div><StatusBadge stage={stage} />{total > 0 && <span className="version">Standard v3 · {progress} of {total}</span>}<span className="location">⌖ {String(lead.location ?? 'Not assigned')}</span><div className="record-actions"><button className="secondary" disabled={busy} onClick={toggleCadence}>Ⅱ {cadencePaused ? 'Resume cadence':'Pause cadence'}</button><Link className="primary" href={`/leads/${id}/conversations/sms`}>○ Send SMS</Link></div></section><nav className="record-tabs">{[['overview','Overview',`/leads/${id}`],['conversations','Conversations',`/leads/${id}/conversations/sms`],['cadence','Cadence',`/leads/${id}/cadence`],['appointments','Appointments',`/leads/${id}/appointments`],['history','History',`/leads/${id}/history`]].map(([key,label,href])=><Link className={tab===key?'active':''} href={href} key={key}>{label}</Link>)}</nav>{children}</>;
+  return <><div className="breadcrumbs"><Link href="/leads">Lead Pipeline</Link><span>/</span><span>{String(lead.display_id)}</span><span>/</span><strong>{lead.full_name}</strong></div><section className="lead-header"><div className="lead-avatar">{initials(lead.full_name)}</div><div className="lead-identity"><h1>{lead.full_name}</h1><span>☎ {phone}</span></div><StatusBadge stage={stage} />{total > 0 && !cadenceOver && <span className="version">Standard v3 · {progress} of {total}</span>}<span className="location">⌖ {String(lead.location ?? 'Not assigned')}</span><div className="record-actions">{!cadenceOver && <button className="secondary" disabled={busy} onClick={toggleCadence}>Ⅱ {cadencePaused ? 'Resume cadence':'Pause cadence'}</button>}<Link className="primary" href={`/leads/${id}/conversations/sms`}>○ Send SMS</Link></div></section><nav className="record-tabs">{[['overview','Overview',`/leads/${id}`],['conversations','Conversations',`/leads/${id}/conversations/sms`],['cadence','Cadence',`/leads/${id}/cadence`],['appointments','Appointments',`/leads/${id}/appointments`],['history','History',`/leads/${id}/history`]].map(([key,label,href])=><Link className={tab===key?'active':''} href={href} key={key}>{label}</Link>)}</nav>{children}</>;
 }
 
 function LeadOverview({ detail }: { detail: LeadDetail }) {
   const lead=detail.lead;
-  const pendingProvider = detail.events.some((event) => event.status === 'attempted' || event.status === 'in_flight');
+  const stage = String(lead.stage ?? 'cadence') as LeadStage;
+  // A finished lead has an outcome, not a pending action, and no schedule to open.
+  const cadenceOver = stage === 'closed' || stage === 'booked';
+  const pendingProvider = !cadenceOver && detail.events.some((event) => event.status === 'attempted' || event.status === 'in_flight');
   const nextAction = String(lead.next_step ?? (pendingProvider ? 'Awaiting provider result' : detail.events.length ? 'Cadence complete' : 'No cadence scheduled'));
-  const nextCopy = pendingProvider ? 'A call was dispatched and is waiting for its provider result.' : lead.next_event_id ? 'Continue the scheduled outreach cadence.' : 'No planned outreach event remains.';
-  return <div className="two-col wide-left"><div className="stack"><Panel title="Lead information"><dl className="info-grid"><div><dt>Lead ID</dt><dd>{String(lead.display_id)}</dd></div><div><dt>Source</dt><dd>{String(lead.source ?? lead.source_system ?? 'Unknown')}</dd></div><div><dt>Owner</dt><dd>{String(lead.owner ?? 'Unassigned')}</dd></div><div><dt>Created</dt><dd>{date(String(lead.created_at ?? ''))}</dd></div>{Boolean(lead.date_of_birth) && <div><dt>Date of birth</dt><dd>{String(lead.date_of_birth)}</dd></div>}{Boolean(lead.referred_by) && <div><dt>Referred by</dt><dd>{String(lead.referred_by)}</dd></div>}{Boolean(lead.lead_type) && <div><dt>Lead type</dt><dd>{String(lead.lead_type)}</dd></div>}<div><dt>Preferred location</dt><dd>{String(lead.location ?? 'Not assigned')}</dd></div><div><dt>Time zone</dt><dd>{String(lead.timezone ?? 'Not recorded')}</dd></div></dl></Panel><Panel title="Next action"><div className="next-action"><span className="status-icon">☎</span><div><strong>{nextAction}</strong><p>{nextCopy}</p></div><Link className="secondary" href={`/leads/${lead.id}/cadence`}>View schedule</Link></div></Panel><Panel title="Notes"><p className="muted">No additional lead notes have been recorded.</p></Panel></div><Panel title="Recent activity"><ActivityList detail={detail} /><Link className="text-action footer-link" href={`/leads/${lead.id}/history`}>View full history →</Link></Panel></div>;
+  const nextCopy = cadenceOver ? 'Automated outreach has ended for this lead.' : pendingProvider ? 'A call was dispatched and is waiting for its provider result.' : lead.next_event_id ? 'Continue the scheduled outreach cadence.' : 'No planned outreach event remains.';
+  return <div className="two-col wide-left"><div className="stack"><Panel title="Lead information"><dl className="info-grid"><div><dt>Lead ID</dt><dd>{String(lead.display_id)}</dd></div><div><dt>Source</dt><dd>{String(lead.source ?? lead.source_system ?? 'Unknown')}</dd></div><div><dt>Owner</dt><dd>{String(lead.owner ?? 'Unassigned')}</dd></div><div><dt>Created</dt><dd>{date(String(lead.created_at ?? ''))}</dd></div>{Boolean(lead.date_of_birth) && <div><dt>Date of birth</dt><dd>{String(lead.date_of_birth)}</dd></div>}{Boolean(lead.referred_by) && <div><dt>Referred by</dt><dd>{String(lead.referred_by)}</dd></div>}{Boolean(lead.lead_type) && <div><dt>Lead type</dt><dd>{String(lead.lead_type)}</dd></div>}<div><dt>Preferred location</dt><dd>{String(lead.location ?? 'Not assigned')}</dd></div><div><dt>Time zone</dt><dd>{String(lead.timezone ?? 'Not recorded')}</dd></div></dl></Panel><Panel title={cadenceOver ? "Outcome" : "Next action"}><div className="next-action"><span className="status-icon">☎</span><div><strong>{nextAction}</strong><p>{nextCopy}</p></div><Link className="secondary" href={`/leads/${lead.id}/cadence`}>View schedule</Link></div></Panel><Panel title="Notes"><p className="muted">No additional lead notes have been recorded.</p></Panel></div><Panel title="Recent activity"><ActivityList detail={detail} /><Link className="text-action footer-link" href={`/leads/${lead.id}/history`}>View full history →</Link></Panel></div>;
 }
 
 function SmsPage({ detail, action }: { detail: LeadDetail; action: DashboardAction }) {
@@ -366,8 +372,8 @@ function LeadHistoryPage({ detail }: { detail: LeadDetail }) {
 }
 
 function ConversationTabs({ id, active }: { id:string; active:'sms'|'calls' }) { return <nav className="conversation-tabs"><Link className={active==='sms'?'active':''} href={`/leads/${id}/conversations/sms`}>● SMS</Link><Link className={active==='calls'?'active':''} href={`/leads/${id}/conversations/calls`}>▤ Call transcripts</Link></nav>; }
-function LeadCard({ lead, onOpen }: { lead: Lead; onOpen:()=>void }) { const meta=statusMeta[lead.stage]; return <button className="lead-card" type="button" onClick={onOpen}><strong>{lead.full_name}</strong><span className="location">⌖ {lead.location ?? 'Not assigned'}</span><StatusBadge stage={lead.stage} />{lead.stage==='cadence'&&<span className="version">Standard v3 · {lead.cadence_progress ?? 0} of {lead.cadence_total ?? 0}</span>}<span className="next">Next: {lead.next_step ?? 'No planned action'}</span><span className="sr-only">{meta.label}</span></button>; }
-function StatusTiles({ counts }: { counts: Record<LeadStage,number> }) { return <section className="status-tiles">{(['new','cadence','attention','booked'] as LeadStage[]).map((stage)=><Link className={stage} href={`/leads?stage=${stage}`} key={stage}><StatusGlyph stage={stage} size="large" /><div><small>{statusMeta[stage].label}</small><strong>{counts[stage]}</strong></div></Link>)}</section>; }
+function LeadCard({ lead, onOpen }: { lead: Lead; onOpen:()=>void }) { const meta=statusMeta[lead.stage]; return <button className="lead-card" type="button" onClick={onOpen}><strong>{lead.full_name}</strong><span className="location">⌖ {lead.location ?? 'Not assigned'}</span><StatusBadge stage={lead.stage} />{lead.stage==='cadence'&&<span className="version">Standard v3 · {lead.cadence_progress ?? 0} of {lead.cadence_total ?? 0}</span>}<span className="next">{lead.stage === 'closed' || lead.stage === 'booked' ? 'Outcome' : 'Next'}: {lead.next_step ?? 'No planned action'}</span><span className="sr-only">{meta.label}</span></button>; }
+function StatusTiles({ counts, loading = false }: { counts: Record<LeadStage,number>; loading?: boolean }) { return <section className="status-tiles" aria-busy={loading}>{(['new','cadence','attention','booked','closed'] as LeadStage[]).map((stage)=><Link className={stage} href={`/leads?stage=${stage}`} key={stage}><StatusGlyph stage={stage} size="large" /><div><small>{statusMeta[stage].label}</small><strong>{loading ? "—" : counts[stage]}</strong></div></Link>)}</section>; }
 function StatusBadge({ stage }: { stage: LeadStage }) { return <span className={`status-pill ${stage}`}><StatusGlyph stage={stage} size="compact" />{statusMeta[stage].label}</span>; }
 function StatusGlyph({ stage, size = 'normal' }: { stage: LeadStage; size?: 'compact' | 'normal' | 'large' }) { return <span className={`status-glyph ${stage} ${size}`} aria-hidden="true"><i /></span>; }
 function StatusText({ status }: { status:string }) { const warning=/attention|gated|disabled|unknown/i.test(status); return <span className={`status-text ${warning?'warning':''}`}><i />{status}</span>; }
@@ -404,7 +410,7 @@ function exportLeadReport(snapshot: Snapshot) {
 function filterSnapshot(snapshot: Snapshot, location: string): Snapshot {
   if (location === 'All Locations') return snapshot;
   const leads = snapshot.leads.filter((lead) => lead.location === location);
-  const counts = { new: 0, cadence: 0, attention: 0, booked: 0 } satisfies Record<LeadStage, number>;
+  const counts = { new: 0, cadence: 0, attention: 0, booked: 0, closed: 0 } satisfies Record<LeadStage, number>;
   leads.forEach((lead) => { counts[lead.stage] += 1; });
   return {
     ...snapshot,
