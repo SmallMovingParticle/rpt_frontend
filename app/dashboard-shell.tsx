@@ -46,8 +46,10 @@ export function DashboardShell({ displayName, localPreview = false }: { displayN
         .catch(() => undefined);
     }
     refresh();
-    const interval = window.setInterval(refresh, 5000);
-    return () => { controller.abort(); window.clearInterval(interval); };
+    const interval = window.setInterval(() => { if (!document.hidden) refresh(); }, 20000);
+    const onVisible = () => { if (!document.hidden) refresh(); };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => { controller.abort(); window.clearInterval(interval); document.removeEventListener('visibilitychange', onVisible); };
   }, []);
 
   useEffect(() => {
@@ -63,8 +65,10 @@ export function DashboardShell({ displayName, localPreview = false }: { displayN
         .catch(() => undefined);
     }
     refresh();
-    const interval = window.setInterval(refresh, 5000);
-    return () => { controller.abort(); window.clearInterval(interval); };
+    const interval = window.setInterval(() => { if (!document.hidden) refresh(); }, 20000);
+    const onVisible = () => { if (!document.hidden) refresh(); };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => { controller.abort(); window.clearInterval(interval); document.removeEventListener('visibilitychange', onVisible); };
   }, [leadId, router]);
 
   function showNotice(message: string) {
@@ -357,7 +361,7 @@ function CallsPage({ detail }: { detail: LeadDetail }) {
 
 function LeadCadencePage({ detail, action }: { detail: LeadDetail; action: DashboardAction }) {
   const currentIndex = detail.events.findIndex((event) => event.status === 'planned');
-  return <div className="two-col wide-left"><Panel title={`${String(detail.lead.full_name)}’s cadence`}><p className="panel-subtitle">Live database schedule · based on Standard v3</p><div className="cadence-timeline">{detail.events.map((event,index)=>{const status=String(event.status);const completed=status==='delivered'||status==='skipped';const pending=status==='attempted'||status==='in_flight';const issue=status==='failed'||status==='unknown';const current=index===currentIndex;const statusLabel=completed?'Completed':pending?'Awaiting provider result':issue?'Needs review':current?`Due ${date(String(event.scheduled_for))}`:'Upcoming';return <div className={`${completed?'completed':''} ${current?'current':''} ${issue?'issue':''}`} key={String(event.id)}><span>{completed?'✓':index+1}</span><b>{String(event.channel)==='call'?'☎':'●'}</b><strong>Day {String(event.day_offset)} {String(event.channel).toUpperCase()}</strong><small>{statusLabel}</small>{current && <button className="icon-button" onClick={()=>{const value=window.prompt('New ISO date/time',String(event.scheduled_for));if(value)action(`leads/${detail.lead.id}/outreach-events/${event.id}`,'PATCH',{scheduled_for:value});}}>Edit</button>}</div>})}</div></Panel><div className="stack"><Panel title="Patient-specific controls"><p className="panel-subtitle">Overrides affect {String(detail.lead.full_name)} only.</p><dl className="detail-list"><div><dt>Assigned cadence</dt><dd>Standard v3</dd></div><div><dt>Time zone</dt><dd>{String(detail.lead.timezone ?? 'Not recorded')}</dd></div><div><dt>Preferred location</dt><dd>{String(detail.lead.location ?? 'Not assigned')}</dd></div><div><dt>Next send window</dt><dd>Business hours</dd></div></dl><button className="secondary full">Create local override</button></Panel><Panel title="Contact rules"><Toggle label="Do not contact" enabled={String(detail.lead.status)==='do_not_contact'} /><Toggle label="Call opt-out" enabled={Boolean(detail.lead.call_opt_out)} /><p className="muted">Do not contact blocks calls and SMS and cannot be bypassed.</p></Panel></div></div>;
+  return <div className="two-col wide-left"><Panel title={`${String(detail.lead.full_name)}’s cadence`}><p className="panel-subtitle">Live database schedule · based on Standard v3</p><div className="cadence-timeline">{detail.events.map((event,index)=>{const status=String(event.status);const completed=status==='delivered';const skipped=status==='skipped';const pending=status==='attempted'||status==='in_flight';const issue=status==='failed'||status==='unknown';const current=index===currentIndex;const statusLabel=completed?'Completed':skipped?'Not sent · outreach ended':pending?'Awaiting provider result':issue?'Needs review':current?`Due ${date(String(event.scheduled_for))}`:'Upcoming';return <div className={`${completed?'completed':''} ${skipped?'skipped':''} ${current?'current':''} ${issue?'issue':''}`} key={String(event.id)}><span>{completed?'✓':skipped?'–':index+1}</span><b>{String(event.channel)==='call'?'☎':'●'}</b><strong>Day {String(event.day_offset)} {String(event.channel).toUpperCase()}</strong><small>{statusLabel}</small>{current && <button className="icon-button" onClick={()=>{const value=window.prompt('New ISO date/time',String(event.scheduled_for));if(value)action(`leads/${detail.lead.id}/outreach-events/${event.id}`,'PATCH',{scheduled_for:value});}}>Edit</button>}</div>})}</div></Panel><div className="stack"><Panel title="Patient-specific controls"><p className="panel-subtitle">Overrides affect {String(detail.lead.full_name)} only.</p><dl className="detail-list"><div><dt>Assigned cadence</dt><dd>Standard v3</dd></div><div><dt>Time zone</dt><dd>{String(detail.lead.timezone ?? 'Not recorded')}</dd></div><div><dt>Preferred location</dt><dd>{String(detail.lead.location ?? 'Not assigned')}</dd></div><div><dt>Next send window</dt><dd>Business hours</dd></div></dl><button className="secondary full">Create local override</button></Panel><Panel title="Contact rules"><Toggle label="Do not contact" enabled={String(detail.lead.status)==='do_not_contact'} /><Toggle label="Call opt-out" enabled={Boolean(detail.lead.call_opt_out)} /><p className="muted">Do not contact blocks calls and SMS and cannot be bypassed.</p></Panel></div></div>;
 }
 
 function LeadAppointmentsPage({ detail }: { detail: LeadDetail }) {

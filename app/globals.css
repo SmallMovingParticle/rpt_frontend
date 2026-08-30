@@ -274,6 +274,8 @@ tr.row-booked td:first-child { border-left: 3px solid var(--green); }
 .cadence-timeline > div { display: grid; grid-template-columns: 38px 35px 1fr auto auto; gap: 10px; align-items: center; min-height: 63px; border-bottom: 1px solid var(--line); }
 .cadence-timeline > div > span { width: 31px; height: 31px; border-radius: 50%; display: grid; place-items: center; color: #526078; background: #edf0f5; }
 .cadence-timeline > div.completed > span { color: #fff; background: var(--green); }
+.cadence-timeline > div.skipped > span { color: #94a3b8; background: #eef1f5; }
+.cadence-timeline > div.skipped strong, .cadence-timeline > div.skipped small { color: #94a3b8; }
 .cadence-timeline > div.current { background: #f1f6ff; }
 .cadence-timeline > div.current > span { color: #fff; background: var(--blue); }
 .cadence-timeline > div > b { color: var(--blue); }
