@@ -53,6 +53,12 @@ export type Metrics = {
   calls_completed: number;
   calls_completion_rate: number | null;
   calls_reached_rate: number | null;
+  voice_minutes: number;
+  voice_seconds: number;
+  voice_cost: number;
+  calls_logged: number;
+  stride_appointments: number;
+  keap_handoffs: number;
   review_rate: number | null;
   booked_rate: number | null;
 };

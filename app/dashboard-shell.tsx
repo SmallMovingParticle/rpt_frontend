@@ -279,16 +279,16 @@ function leadMovementSeries(snapshot: Snapshot) {
   for (let offset = days - 1; offset >= 0; offset -= 1) {
     const day = new Date(today);
     day.setDate(today.getDate() - offset);
-    const key = day.toISOString().slice(0, 10);
+    const key = clinicDateKey(day);
     labels.push(key);
     buckets.set(key, 0);
   }
   for (const lead of snapshot.leads) {
-    const key = String(lead.created_at ?? '').slice(0, 10);
+    const key = clinicDateKey(String(lead.created_at ?? ''));
     if (buckets.has(key)) buckets.set(key, (buckets.get(key) ?? 0) + 1);
   }
   const points = labels.map((key) => ({
-    label: new Date(`${key}T00:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+    label: new Date(`${key}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: CLINIC_TZ }),
     value: buckets.get(key) ?? 0,
   }));
   return { points, max: Math.max(...points.map((point) => point.value), 0) };
@@ -349,8 +349,18 @@ function TemplateStudio({ snapshot, action, onPublished }: { snapshot: Snapshot;
 }
 
 function ProvidersPage({ snapshot }: { snapshot: Snapshot }) {
-  return <><PageTitle title="Provider Usage & Health" subtitle="Balances, connectivity, and operational safeguards." tools={<button className="secondary" type="button" onClick={() => window.location.reload()}>↻ Refresh</button>} /><div className="provider-grid">{snapshot.providers.map((provider)=><Panel key={String(provider.name)}><div className="provider-card"><ProviderIcon name={String(provider.name)} /><div><h2>{String(provider.name)}</h2><StatusText status={String(provider.status)} /></div></div><hr /><small>Balance</small><strong className="balance">{provider.balance ? String(provider.balance) : 'Provider API unavailable'}</strong><span>{String(provider.use ?? provider.mode)}</span></Panel>)}</div>
-    <div className="two-col"><Panel title="Usage this billing period"><Metric label="Vapi voice minutes" value="342" width="36%" /><Metric label="Twilio SMS messages" value="1,248" width="76%" /><Metric label="Stride availability checks" value="186" width="44%" /><Metric label="Keap signed handoffs" value="74" width="27%" /></Panel><Panel title="System health"><dl className="health-list"><div><dt>Webhook queue</dt><dd>{snapshot.system.provider_queue}</dd><StatusText status={snapshot.system.provider_queue ? 'Needs attention':'Good'} /></div><div><dt>Worker</dt><dd>Running</dd><StatusText status="Healthy" /></div><div><dt>Review queue</dt><dd>{snapshot.system.review_queue}</dd><StatusText status={snapshot.system.review_queue ? 'Needs attention':'Good'} /></div><div><dt>Unknown events</dt><dd>{snapshot.system.unknown_events}</dd><StatusText status={snapshot.system.unknown_events ? 'Needs attention':'Good'} /></div></dl></Panel></div></>;
+  // Real counters, and a bar scaled against the largest of them so the widths
+  // mean something. Nothing on this page is a placeholder any more.
+  const m = snapshot.metrics;
+  const usage: Array<[string, number]> = [
+    ['Vapi voice minutes', m?.voice_minutes ?? 0],
+    ['Twilio SMS messages', m?.messages_sent ?? 0],
+    ['Calls logged', m?.calls_logged ?? 0],
+    ['Keap signed handoffs', m?.keap_handoffs ?? 0],
+  ];
+  const peak = Math.max(...usage.map(([, value]) => value), 1);
+  return <><PageTitle title="Provider Usage & Health" subtitle="Balances, connectivity, and operational safeguards." tools={<button className="secondary" type="button" onClick={() => window.location.reload()}>↻ Refresh</button>} /><div className="provider-grid">{snapshot.providers.map((provider)=><Panel key={String(provider.name)}><div className="provider-card"><ProviderIcon name={String(provider.name)} /><div><h2>{String(provider.name)}</h2><StatusText status={String(provider.status)} /></div></div><hr /><small>Balance</small><strong className="balance">{provider.balance ? String(provider.balance) : 'Not reported'}</strong><span>{String(provider.use ?? provider.mode)}</span></Panel>)}</div>
+    <div className="two-col"><Panel title="Usage to date">{usage.map(([label,value])=><Metric key={label} label={label} value={value.toLocaleString()} width={`${Math.round(value / peak * 100)}%`} />)}{Boolean(m?.voice_cost) && <Metric label="Vapi spend" value={`$${(m?.voice_cost ?? 0).toFixed(2)}`} width="100%" />}</Panel><Panel title="System health"><dl className="health-list"><div><dt>Webhook queue</dt><dd>{snapshot.system.provider_queue}</dd><StatusText status={snapshot.system.provider_queue ? 'Needs attention':'Good'} /></div><div><dt>Worker</dt><dd>Running</dd><StatusText status="Healthy" /></div><div><dt>Review queue</dt><dd>{snapshot.system.review_queue}</dd><StatusText status={snapshot.system.review_queue ? 'Needs attention':'Good'} /></div><div><dt>Unknown events</dt><dd>{snapshot.system.unknown_events}</dd><StatusText status={snapshot.system.unknown_events ? 'Needs attention':'Good'} /></div></dl></Panel></div></>;
 }
 
 function LeadFrame({ detail, tab, action, children }: { detail: LeadDetail; tab: string; action: DashboardAction; children: ReactNode }) {
@@ -392,7 +402,7 @@ function CallsPage({ detail }: { detail: LeadDetail }) {
 
 function LeadCadencePage({ detail, action }: { detail: LeadDetail; action: DashboardAction }) {
   const currentIndex = detail.events.findIndex((event) => event.status === 'planned');
-  return <div className="two-col wide-left"><Panel title={`${String(detail.lead.full_name)}’s cadence`}><p className="panel-subtitle">Live database schedule · based on Standard v3</p><div className="cadence-timeline">{detail.events.map((event,index)=>{const status=String(event.status);const completed=status==='delivered';const skipped=status==='skipped';const pending=status==='attempted'||status==='in_flight';const issue=status==='failed'||status==='unknown';const current=index===currentIndex;const statusLabel=completed?'Completed':skipped?'Not sent · outreach ended':pending?'Awaiting provider result':issue?'Needs review':current?`Due ${date(String(event.scheduled_for))}`:'Upcoming';return <div className={`${completed?'completed':''} ${skipped?'skipped':''} ${current?'current':''} ${issue?'issue':''}`} key={String(event.id)}><span>{completed?'✓':skipped?'–':index+1}</span><b>{String(event.channel)==='call'?'☎':'●'}</b><strong>Day {String(event.day_offset)} {String(event.channel).toUpperCase()}</strong><small>{statusLabel}</small>{current && <button className="icon-button" onClick={()=>{const value=window.prompt('New ISO date/time',String(event.scheduled_for));if(value)action(`leads/${detail.lead.id}/outreach-events/${event.id}`,'PATCH',{scheduled_for:value});}}>Edit</button>}</div>})}</div></Panel><div className="stack"><Panel title="Patient-specific controls"><p className="panel-subtitle">Overrides affect {String(detail.lead.full_name)} only.</p><dl className="detail-list"><div><dt>Assigned cadence</dt><dd>Standard v3</dd></div><div><dt>Time zone</dt><dd>{String(detail.lead.timezone ?? 'Not recorded')}</dd></div><div><dt>Preferred location</dt><dd>{String(detail.lead.location ?? 'Not assigned')}</dd></div><div><dt>Next send window</dt><dd>Business hours</dd></div></dl><button className="secondary full">Create local override</button></Panel><Panel title="Contact rules"><Toggle label="Do not contact" enabled={String(detail.lead.status)==='do_not_contact'} /><Toggle label="Call opt-out" enabled={Boolean(detail.lead.call_opt_out)} /><p className="muted">Do not contact blocks calls and SMS and cannot be bypassed.</p></Panel></div></div>;
+  return <div className="two-col wide-left"><Panel title={`${String(detail.lead.full_name)}’s cadence`}><p className="panel-subtitle">Live database schedule · based on Standard v3</p><div className="cadence-timeline">{detail.events.map((event,index)=>{const status=String(event.status);const completed=status==='delivered';const skipped=status==='skipped';const pending=status==='attempted'||status==='in_flight';const issue=status==='failed'||status==='unknown';const current=index===currentIndex;const statusLabel=completed?'Completed':skipped?'Not sent · outreach ended':pending?'Awaiting provider result':issue?'Needs review':current?`Due ${date(String(event.scheduled_for))}`:'Upcoming';return <div className={`${completed?'completed':''} ${skipped?'skipped':''} ${current?'current':''} ${issue?'issue':''}`} key={String(event.id)}><span>{completed?'✓':skipped?'–':index+1}</span><b>{String(event.channel)==='call'?'☎':'●'}</b><strong>{event.day_offset === null || event.day_offset === undefined ? 'Callback' : `Day ${String(event.day_offset)}`} {String(event.channel).toUpperCase()}</strong><small>{statusLabel}</small>{current && <button className="icon-button" onClick={()=>{const value=window.prompt('New ISO date/time',String(event.scheduled_for));if(value)action(`leads/${detail.lead.id}/outreach-events/${event.id}`,'PATCH',{scheduled_for:value});}}>Edit</button>}</div>})}</div></Panel><div className="stack"><Panel title="Patient-specific controls"><p className="panel-subtitle">Overrides affect {String(detail.lead.full_name)} only.</p><dl className="detail-list"><div><dt>Assigned cadence</dt><dd>Standard v3</dd></div><div><dt>Time zone</dt><dd>{String(detail.lead.timezone ?? 'Not recorded')}</dd></div><div><dt>Preferred location</dt><dd>{String(detail.lead.location ?? 'Not assigned')}</dd></div><div><dt>Next send window</dt><dd>Business hours</dd></div></dl><button className="secondary full">Create local override</button></Panel><Panel title="Contact rules"><Toggle label="Do not contact" enabled={String(detail.lead.status)==='do_not_contact'} /><Toggle label="Call opt-out" enabled={Boolean(detail.lead.call_opt_out)} /><p className="muted">Do not contact blocks calls and SMS and cannot be bypassed.</p></Panel></div></div>;
 }
 
 function LeadAppointmentsPage({ detail }: { detail: LeadDetail }) {
@@ -425,11 +435,19 @@ function ActivityList({ detail, items }: { detail:LeadDetail; items?: Array<Reco
 function activityCategory(item: Record<string,unknown>) { const value=`${item.to_status ?? ''} ${item.reason ?? ''} ${item.source ?? ''}`.toLowerCase(); if(/appointment|booked|stride/.test(value))return'appointments';if(/sms|message|twilio/.test(value))return'messages';if(/call|callback|vapi/.test(value))return'calls';return'cadence'; }
 function initials(name:string){return name.split(/\s+/).map((part)=>part[0]).join('').slice(0,2).toUpperCase();}
 function humanize(value:string){return value.replaceAll('_',' ').replace(/\b\w/g,(letter)=>letter.toUpperCase());}
-function time(value:string|null|undefined){if(!value)return'—';const parsed=new Date(value);return Number.isNaN(parsed.valueOf())?'—':parsed.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});}
-function date(value:string){const parsed=new Date(value);return Number.isNaN(parsed.valueOf())?'—':parsed.toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});}
+// Every time in this app is a clinic time. Rendering in the viewer's own zone
+// made a 9:00 AM Pacific callback read as 9:30 PM to staff in India, so the
+// practice timezone is pinned here and shown alongside the value.
+const CLINIC_TZ = 'America/Los_Angeles';
+const CLINIC_TZ_LABEL = 'PT';
+function time(value:string|null|undefined){if(!value)return'—';const parsed=new Date(value);return Number.isNaN(parsed.valueOf())?'—':`${parsed.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',timeZone:CLINIC_TZ})} ${CLINIC_TZ_LABEL}`;}
+function date(value:string){const parsed=new Date(value);return Number.isNaN(parsed.valueOf())?'—':`${parsed.toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit',timeZone:CLINIC_TZ})} ${CLINIC_TZ_LABEL}`;}
+function clinicDateKey(value:Date|string){const parsed=typeof value==='string'?new Date(value):value;return Number.isNaN(parsed.valueOf())?'':parsed.toLocaleDateString('en-CA',{timeZone:CLINIC_TZ});}
+function isToday(value:string){const key=clinicDateKey(value);return key!==''&&key===clinicDateKey(new Date());}
+
 function relative(value:string|null|undefined){return value?date(value):'Not contacted';}
 function duration(seconds:number){return `${Math.floor(seconds/60)}:${String(seconds%60).padStart(2,'0')}`;}
-function isToday(value:string){const parsed=new Date(value);return !Number.isNaN(parsed.valueOf())&&parsed.toDateString()===new Date().toDateString();}
+
 
 function exportLeadReport(snapshot: Snapshot) {
   const rows = [['Lead', 'Status', 'Owner', 'Location', 'Source'], ...snapshot.leads.map((lead) => [lead.full_name, statusMeta[lead.stage].label, lead.owner ?? owners[0], lead.location ?? '', lead.source])];
