@@ -17,12 +17,26 @@ const PERCENT_ENCODED_UTF8 = 'percent-encoded-utf-8';
 const SIGN_IN_PATH = '/signin-with-chatgpt';
 const SIGN_OUT_PATH = '/signout-with-chatgpt';
 const CALLBACK_PATH = '/callback';
+const VERCEL_PROTECTED_USER_ID = 'vercel-protected-deployment';
+const VERCEL_PROTECTED_USER_EMAIL = 'vercel-protected@rausch.internal';
+
+function isVercelProtectedDeployment(): boolean {
+  return process.env.VERCEL === '1';
+}
 
 export async function getChatGPTUser(): Promise<ChatGPTUser | null> {
   const requestHeaders = await headers();
   const userId = requestHeaders.get(USER_ID_HEADER);
   const email = requestHeaders.get(USER_EMAIL_HEADER);
-  if (!userId || !email) return null;
+  if (!userId || !email) {
+    if (!isVercelProtectedDeployment()) return null;
+    return {
+      userId: VERCEL_PROTECTED_USER_ID,
+      displayName: 'Rausch Staff',
+      email: VERCEL_PROTECTED_USER_EMAIL,
+      fullName: null,
+    };
+  }
 
   const encodedFullName = requestHeaders.get(USER_FULL_NAME_HEADER);
   const fullName =
@@ -40,6 +54,7 @@ export async function getChatGPTUser(): Promise<ChatGPTUser | null> {
 }
 
 export function isAllowedDashboardEmail(email: string): boolean {
+  if (isVercelProtectedDeployment() && email === VERCEL_PROTECTED_USER_EMAIL) return true;
   return (process.env.DASHBOARD_ALLOWED_EMAILS ?? '')
     .split(',')
     .map((allowed) => allowed.trim().toLowerCase())

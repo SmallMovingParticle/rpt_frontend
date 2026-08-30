@@ -91,13 +91,18 @@ npm audit
 `npm run build` produces the Vinext/Sites bundle. `npm run build:vercel` produces the native `.next` bundle
 expected by Vercel; the checked-in `vercel.json` selects that command automatically.
 
+Vercel deployments use Vercel Authentication as their outer access boundary. Keep **All Deployments**
+protected, grant access only to organization staff, and do not create shareable bypass links. Vercel does not
+forward individual viewer identity to this app, so dashboard audit entries use one bounded Vercel deployment
+actor; use app-owned organization SSO before production if individual staff attribution is required.
+
 ## Production checklist
 
 - Use a stable public HTTPS backend URL.
 - Configure matching high-entropy dashboard tokens in both runtimes.
 - Set the real organization staff email allowlist.
 - Keep the CRM owner-only or restricted to approved organization users.
-- Replace or adapt the OpenAI Sites identity-header flow before using a Vercel deployment; Vercel does not
-  provide the existing `oai-authenticated-user-*` headers.
+- For Vercel, enable Vercel Authentication for **All Deployments** and restrict project access to organization
+  staff. For Sites, retain the explicit organization email allowlist.
 - Confirm backend worker, database migrations, provider webhooks, and readiness checks before enabling live
   outreach.
