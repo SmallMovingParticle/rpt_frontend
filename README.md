@@ -4,6 +4,13 @@ An internal operations dashboard for Rausch Physical Therapy & Wellness. The fro
 one place to create leads, monitor outreach cadences, review provider outcomes, manage appointments, and view
 operational analytics.
 
+<p>
+  <img alt="Next.js" src="https://img.shields.io/badge/Next.js-16-000000?logo=nextdotjs&logoColor=white">
+  <img alt="React" src="https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=111827">
+  <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white">
+  <img alt="Vercel" src="https://img.shields.io/badge/Vercel-protected-000000?logo=vercel&logoColor=white">
+</p>
+
 > This repository contains the frontend only. It requires the companion RPT FastAPI service for data and
 > provider actions.
 
@@ -16,6 +23,19 @@ operational analytics.
 - Appointment availability and scheduling controls
 - Analytics, cadence templates, SMS templates, and provider-health administration
 - Responsive desktop, tablet, and mobile layouts
+
+## Product preview
+
+The hosted environment is staff-only. These synthetic design-reference screens show the product without
+exposing patient or production data.
+
+| Lead pipeline | Lead workspace |
+| --- | --- |
+| ![Lead pipeline board](https://raw.githubusercontent.com/SmallMovingParticle/rpt_outbound_call_sms_agent/main/dashboard/salesforce-concept-v4-final/02-leads-board.jpg) | ![Lead workspace](https://raw.githubusercontent.com/SmallMovingParticle/rpt_outbound_call_sms_agent/main/dashboard/salesforce-concept-v4-final/10-lead-call-transcript.jpg) |
+
+| Appointments | Provider health |
+| --- | --- |
+| ![Appointments dashboard](https://raw.githubusercontent.com/SmallMovingParticle/rpt_outbound_call_sms_agent/main/dashboard/salesforce-concept-v4-final/04-appointments.jpg) | ![Provider usage and health](https://raw.githubusercontent.com/SmallMovingParticle/rpt_outbound_call_sms_agent/main/dashboard/salesforce-concept-v4-final/16-provider-usage-health.jpg) |
 
 ## Architecture
 
