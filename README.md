@@ -39,7 +39,7 @@ backend operations.
 
 - Next.js 16, React 19, and TypeScript
 - Vinext and Vite
-- Cloudflare Workers / OpenAI Sites-compatible output
+- Native Next.js output for Vercel plus Vinext output for Cloudflare Workers / OpenAI Sites
 - ESLint 9
 
 ## Run locally
@@ -84,8 +84,12 @@ store or expose call recordings.
 ```powershell
 npm run lint
 npm run build
+npm run build:vercel
 npm audit
 ```
+
+`npm run build` produces the Vinext/Sites bundle. `npm run build:vercel` produces the native `.next` bundle
+expected by Vercel; the checked-in `vercel.json` selects that command automatically.
 
 ## Production checklist
 
@@ -93,5 +97,7 @@ npm audit
 - Configure matching high-entropy dashboard tokens in both runtimes.
 - Set the real organization staff email allowlist.
 - Keep the CRM owner-only or restricted to approved organization users.
+- Replace or adapt the OpenAI Sites identity-header flow before using a Vercel deployment; Vercel does not
+  provide the existing `oai-authenticated-user-*` headers.
 - Confirm backend worker, database migrations, provider webhooks, and readiness checks before enabling live
   outreach.

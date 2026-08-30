@@ -40,8 +40,8 @@ export function DashboardShell({ displayName, localPreview = false }: { displayN
     const controller = new AbortController();
     function refresh() {
       fetch('/api/dashboard/snapshot', { cache: 'no-store', signal: controller.signal })
-        .then((response) => response.ok ? response.json() : Promise.reject())
-        .then((data: Snapshot) => { setSnapshot(data); setLive(true); })
+        .then((response): Promise<Snapshot> => response.ok ? response.json() as Promise<Snapshot> : Promise.reject())
+        .then((data) => { setSnapshot(data); setLive(true); })
         .catch(() => undefined);
     }
     refresh();
@@ -56,9 +56,9 @@ export function DashboardShell({ displayName, localPreview = false }: { displayN
       fetch(`/api/dashboard/leads/${leadId}`, { cache: 'no-store', signal: controller.signal })
         .then((response) => {
           if (response.status === 404) { router.replace('/leads'); throw new Error('lead not found'); }
-          return response.ok ? response.json() : Promise.reject();
+          return response.ok ? response.json() as Promise<LeadDetail> : Promise.reject();
         })
-        .then((data: LeadDetail) => setDetail(data))
+        .then((data) => setDetail(data))
         .catch(() => undefined);
     }
     refresh();
@@ -76,7 +76,7 @@ export function DashboardShell({ displayName, localPreview = false }: { displayN
       const response = await fetch(`/api/dashboard/${path}`, {
         method, headers: { 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined,
       });
-      const data = await response.json().catch(() => ({}));
+      const data = await response.json().catch(() => ({})) as { detail?: string };
       if (!response.ok) {
         if (localPreview && !live) {
           showNotice('Saved in this local preview.');
@@ -103,7 +103,7 @@ export function DashboardShell({ displayName, localPreview = false }: { displayN
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
-      const data = await response.json().catch(() => ({}));
+      const data = await response.json().catch(() => ({})) as Partial<Lead> & { detail?: string };
       if (!response.ok) throw new Error(data.detail ?? 'The lead could not be created.');
       const lead = data as Lead;
       setSnapshot((current) => {
@@ -186,6 +186,7 @@ export function DashboardShell({ displayName, localPreview = false }: { displayN
 function renderPage(path: string, view: string | null, query: string | null, stage: string | null, snapshot: Snapshot, detail: LeadDetail | null, router: ReturnType<typeof useRouter>, action: DashboardAction, openAddLead: () => void, onReviewResolved: (id: string) => void, onTemplatePublished: (id: string, body: string) => void) {
   const requestedLeadId = path.match(/^\/leads\/([0-9a-f-]+)/i)?.[1];
   if (requestedLeadId && (!detail || String(detail.lead.id) !== requestedLeadId)) return <Empty title="Loading lead" body="Retrieving the latest database record and cadence activity." />;
+  const leadDetail = detail!;
   if (path === '/') return <HomePage snapshot={snapshot} />;
   if (path === '/leads') return <LeadsPage key={`${view}-${query}-${stage}`} snapshot={snapshot} mode={view === 'list' ? 'list' : 'board'} initialQuery={query ?? ''} initialStage={stage as LeadStage | null} router={router} onAddLead={openAddLead} />;
   if (path === '/appointments') return <AppointmentsPage snapshot={snapshot} />;
@@ -195,12 +196,12 @@ function renderPage(path: string, view: string | null, query: string | null, sta
   if (path === '/administration/cadence') return <GlobalCadencePage snapshot={snapshot} action={action} />;
   if (path === '/administration/templates') return <TemplateStudio snapshot={snapshot} action={action} onPublished={onTemplatePublished} />;
   if (path === '/administration/providers') return <ProvidersPage snapshot={snapshot} />;
-  if (/^\/leads\/[0-9a-f-]+\/conversations\/sms$/i.test(path)) return <LeadFrame detail={detail} tab="conversations" action={action}><SmsPage detail={detail} action={action} /></LeadFrame>;
-  if (/^\/leads\/[0-9a-f-]+\/conversations\/calls$/i.test(path)) return <LeadFrame detail={detail} tab="conversations" action={action}><CallsPage detail={detail} /></LeadFrame>;
-  if (/^\/leads\/[0-9a-f-]+\/cadence$/i.test(path)) return <LeadFrame detail={detail} tab="cadence" action={action}><LeadCadencePage detail={detail} action={action} /></LeadFrame>;
-  if (/^\/leads\/[0-9a-f-]+\/appointments$/i.test(path)) return <LeadFrame detail={detail} tab="appointments" action={action}><LeadAppointmentsPage detail={detail} /></LeadFrame>;
-  if (/^\/leads\/[0-9a-f-]+\/history$/i.test(path)) return <LeadFrame detail={detail} tab="history" action={action}><LeadHistoryPage detail={detail} /></LeadFrame>;
-  if (/^\/leads\/[0-9a-f-]+$/i.test(path)) return <LeadFrame detail={detail} tab="overview" action={action}><LeadOverview detail={detail} /></LeadFrame>;
+  if (/^\/leads\/[0-9a-f-]+\/conversations\/sms$/i.test(path)) return <LeadFrame detail={leadDetail} tab="conversations" action={action}><SmsPage detail={leadDetail} action={action} /></LeadFrame>;
+  if (/^\/leads\/[0-9a-f-]+\/conversations\/calls$/i.test(path)) return <LeadFrame detail={leadDetail} tab="conversations" action={action}><CallsPage detail={leadDetail} /></LeadFrame>;
+  if (/^\/leads\/[0-9a-f-]+\/cadence$/i.test(path)) return <LeadFrame detail={leadDetail} tab="cadence" action={action}><LeadCadencePage detail={leadDetail} action={action} /></LeadFrame>;
+  if (/^\/leads\/[0-9a-f-]+\/appointments$/i.test(path)) return <LeadFrame detail={leadDetail} tab="appointments" action={action}><LeadAppointmentsPage detail={leadDetail} /></LeadFrame>;
+  if (/^\/leads\/[0-9a-f-]+\/history$/i.test(path)) return <LeadFrame detail={leadDetail} tab="history" action={action}><LeadHistoryPage detail={leadDetail} /></LeadFrame>;
+  if (/^\/leads\/[0-9a-f-]+$/i.test(path)) return <LeadFrame detail={leadDetail} tab="overview" action={action}><LeadOverview detail={leadDetail} /></LeadFrame>;
   return <Empty title="Page not found" body="Return to the lead pipeline to continue." />;
 }
 
@@ -343,7 +344,7 @@ function SmsPage({ detail, action }: { detail: LeadDetail; action: DashboardActi
 function CallsPage({ detail }: { detail: LeadDetail }) {
   const [selected,setSelected]=useState(detail.calls[0]);
   const turns=String(selected?.transcript_text ?? '').split('\n').filter(Boolean);
-  return <><ConversationTabs id={String(detail.lead.id)} active="calls" /><div className="call-layout"><Panel title="Call sessions">{detail.calls.map((call)=><button className={`call-session ${selected?.id===call.id?'selected':''}`} onClick={()=>setSelected(call)} key={String(call.id)}><span>☎</span><div><strong>{date(String(call.dialed_at))} · {duration(Number(call.duration_seconds))}</strong><small>{String(call.answer_state ?? 'pending').replace('_',' ')}</small></div></button>)}</Panel><Panel title="Call transcript"><div className="transcript">{turns.length ? turns.map((turn,index)=>{const [speaker,...words]=turn.split(':');return <div key={index}><b>{initials(speaker)}</b><p><strong>{speaker}</strong>{words.join(':')}</p></div>}) : <Empty title="No text transcript" body="This call did not produce transcript text." />}</div>{selected?.summary_text && <Alert><strong>AI call summary</strong><br />{String(selected.summary_text)}</Alert>}</Panel><Panel title="Call context"><dl className="detail-list"><div><dt>Provider result</dt><dd><StatusText status={String(selected?.ended_reason ?? selected?.answer_state ?? 'Pending')} /></dd></div><div><dt>Record</dt><dd>Provider call session</dd></div><div><dt>Duration</dt><dd>{duration(Number(selected?.duration_seconds ?? 0))}</dd></div><div><dt>Next action</dt><dd>{String(detail.lead.next_step ?? 'No planned event')}</dd></div></dl><Alert tone="success">Text transcript only. No audio recording is stored or exposed.</Alert></Panel></div></>;
+  return <><ConversationTabs id={String(detail.lead.id)} active="calls" /><div className="call-layout"><Panel title="Call sessions">{detail.calls.map((call)=><button className={`call-session ${selected?.id===call.id?'selected':''}`} onClick={()=>setSelected(call)} key={String(call.id)}><span>☎</span><div><strong>{date(String(call.dialed_at))} · {duration(Number(call.duration_seconds))}</strong><small>{String(call.answer_state ?? 'pending').replace('_',' ')}</small></div></button>)}</Panel><Panel title="Call transcript"><div className="transcript">{turns.length ? turns.map((turn,index)=>{const [speaker,...words]=turn.split(':');return <div key={index}><b>{initials(speaker)}</b><p><strong>{speaker}</strong>{words.join(':')}</p></div>}) : <Empty title="No text transcript" body="This call did not produce transcript text." />}</div>{Boolean(selected?.summary_text) && <Alert><strong>AI call summary</strong><br />{String(selected?.summary_text)}</Alert>}</Panel><Panel title="Call context"><dl className="detail-list"><div><dt>Provider result</dt><dd><StatusText status={String(selected?.ended_reason ?? selected?.answer_state ?? 'Pending')} /></dd></div><div><dt>Record</dt><dd>Provider call session</dd></div><div><dt>Duration</dt><dd>{duration(Number(selected?.duration_seconds ?? 0))}</dd></div><div><dt>Next action</dt><dd>{String(detail.lead.next_step ?? 'No planned event')}</dd></div></dl><Alert tone="success">Text transcript only. No audio recording is stored or exposed.</Alert></Panel></div></>;
 }
 
 function LeadCadencePage({ detail, action }: { detail: LeadDetail; action: DashboardAction }) {
