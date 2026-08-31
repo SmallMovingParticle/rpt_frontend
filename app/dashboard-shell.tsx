@@ -185,7 +185,7 @@ export function DashboardShell({ displayName, localPreview = false }: { displayN
   return (
     <div className={`app-shell ${menuOpen ? '' : 'is-collapsed'} ${mobileMenuOpen ? 'mobile-menu-open' : ''}`}>
       <aside className="sidebar">
-        <Link href="/" className="brand-mark" aria-label="Outreach Operations home"><span>O</span><i /></Link>
+        <Link href="/" className="brand-mark" aria-label="Rausch Physical Therapy home"><span>R</span><i /></Link>
         <button className="menu-button" type="button" onClick={toggleNavigation} aria-label="Toggle navigation menu"><span /><span /><span /></button>
         <nav aria-label="Primary navigation">{nav.map(([href, icon, label]) => <Link className={(href === '/' ? pathname === '/' : pathname.startsWith(href)) ? 'active' : ''} href={href} key={href} onClick={() => setMobileMenuOpen(false)}><b><NavIcon name={icon} /></b><span>{label}</span></Link>)}</nav>
       </aside>
@@ -217,8 +217,8 @@ function renderPage(path: string, view: string | null, query: string | null, sta
   if (path === '/') return <HomePage snapshot={snapshot} loading={loading} />;
   if (path === '/leads' && loading && !snapshot.leads.length) return <><PageTitle title="Lead Pipeline" subtitle="Loading the latest pipeline…" /><SkeletonBoard /></>;
   if (path === '/leads') return <LeadsPage key={`${view}-${query}-${stage}`} snapshot={snapshot} mode={view === 'list' ? 'list' : 'board'} initialQuery={query ?? ''} initialStage={stage as LeadStage | null} router={router} onAddLead={openAddLead} action={action} />;
-  if (path === '/appointments') return <AppointmentsPage snapshot={snapshot} />;
-  if (path === '/review') return <ReviewPage snapshot={snapshot} action={action} onResolved={onReviewResolved} />;
+  if (path === '/appointments') return <AppointmentsPage snapshot={snapshot} loading={loading} />;
+  if (path === '/review') return <ReviewPage snapshot={snapshot} action={action} onResolved={onReviewResolved} loading={loading} />;
   if (path === '/analytics') return <AnalyticsPage snapshot={snapshot} />;
   if (path === '/administration') return <AdministrationPage snapshot={snapshot} />;
   if (path === '/administration/cadence') return <GlobalCadencePage snapshot={snapshot} action={action} />;
@@ -266,6 +266,15 @@ function SkeletonTiles() {
     <div className="skeleton-tile" key={index}><span className="skeleton skeleton-circle" /><div><Skeleton w="72px" /><Skeleton w="40px" h={26} /></div></div>)}</section>;
 }
 
+function SkeletonRows({ rows = 4 }: { rows?: number }) {
+  return <div className="skeleton-rows" aria-busy="true">{Array.from({length: rows}).map((_,index)=>
+    <div className="skeleton-row" key={index}>
+      <Skeleton w="104px" h={26} />
+      <div className="skeleton-row-text"><Skeleton w="38%" h={15} /><Skeleton w="58%" /></div>
+      <Skeleton w="88px" />
+    </div>)}</div>;
+}
+
 function LeadsPage({ snapshot, mode, initialQuery, initialStage, router, onAddLead, action }: { snapshot: Snapshot; mode: 'board' | 'list'; initialQuery: string; initialStage: LeadStage | null; router: ReturnType<typeof useRouter>; onAddLead: () => void; action: DashboardAction }) {
   const [query, setQuery] = useState(initialQuery);
   const [dragging, setDragging] = useState<string | null>(null);
@@ -301,17 +310,17 @@ The remaining schedule is discarded and a new cadence begins from today. They wi
       <Panel><DataTable heads={['Lead', 'Status', 'Owner', 'Source', 'Next step', 'Last contact', '']} >{leads.map((lead) => <tr key={lead.id} className={`row-${lead.stage}`}><td><strong>{lead.full_name}</strong><small>{lead.display_id}</small></td><td><StatusBadge stage={lead.stage} /></td><td>{lead.owner ?? 'Unassigned'}</td><td>{lead.source}</td><td>{lead.next_step ?? 'No planned action'}</td><td>{relative(lead.last_contacted_at)}</td><td><Link className="row-link" href={`/leads/${lead.id}`} aria-label={`Open ${lead.full_name}`}>→</Link></td></tr>)}</DataTable></Panel>}</>;
 }
 
-function AppointmentsPage({ snapshot }: { snapshot: Snapshot }) {
+function AppointmentsPage({ snapshot, loading }: { snapshot: Snapshot; loading: boolean }) {
   const [todayOnly, setTodayOnly] = useState(false);
   const lead = snapshot.leads.find((item) => item.stage !== 'booked');
   const todayAppointments = snapshot.appointments.filter((appointment) => isToday(String(appointment.start_utc ?? '')));
   const appointments = todayOnly ? todayAppointments : snapshot.appointments;
   return <><PageTitle title="Appointments" subtitle={`${appointments.length} ${todayOnly ? 'scheduled today' : 'scheduled records'} · live Stride availability with protected booking controls.`} tools={<><button className={todayOnly ? 'primary' : 'secondary'} type="button" aria-pressed={todayOnly} onClick={() => setTodayOnly((current) => !current)}>{todayOnly ? 'Show all' : 'Today'}</button>{lead ? <Link className="primary" href={`/leads/${lead.id}/appointments`}>Check availability</Link> : <button className="primary" disabled>Check availability</button>}</>} />
     <Alert tone="warning">Availability is live. New appointment writes remain gated until the Stride appointment type is verified.</Alert>
-    <Panel title={todayOnly ? 'Today’s appointments' : 'Scheduled appointments'}>{appointments.length ? <div className="today-appointments">{appointments.map((appointment, index) => <article key={String(appointment.id ?? index)}><time>{date(String(appointment.start_utc ?? ''))}</time><div><strong>{String(appointment.full_name ?? 'Scheduled lead')}</strong><span>{String(appointment.type ?? 'Initial Evaluation')} · {String(appointment.location ?? 'Practice')}</span></div><StatusText status={String(appointment.state ?? 'Scheduled')} /></article>)}</div> : <Empty title={todayOnly ? 'No appointments today' : 'No scheduled appointments'} body="Only appointment records returned by the database appear here." />}</Panel></>;
+    <Panel title={todayOnly ? 'Today’s appointments' : 'Scheduled appointments'}>{appointments.length ? <div className="today-appointments">{appointments.map((appointment, index) => <article key={String(appointment.id ?? index)}><time>{date(String(appointment.start_utc ?? ''))}</time><div><strong>{String(appointment.full_name ?? 'Scheduled lead')}</strong><span>{String(appointment.type ?? 'Initial Evaluation')} · {String(appointment.location ?? 'Practice')}</span></div><StatusText status={String(appointment.state ?? 'Scheduled')} /></article>)}</div> : loading ? <SkeletonRows rows={3} /> : <Empty title={todayOnly ? 'No appointments today' : 'No scheduled appointments'} body="Only appointment records returned by the database appear here." />}</Panel></>;
 }
 
-function ReviewPage({ snapshot, action, onResolved }: { snapshot: Snapshot; action: DashboardAction; onResolved: (id: string) => void }) {
+function ReviewPage({ snapshot, action, onResolved, loading }: { snapshot: Snapshot; action: DashboardAction; onResolved: (id: string) => void; loading: boolean }) {
   const leads = snapshot.leads.filter((lead) => lead.stage === 'attention');
   const [selectedId, setSelectedId] = useState(leads[0]?.id ?? '');
   const [resolving, setResolving] = useState(false);
@@ -329,7 +338,7 @@ function ReviewPage({ snapshot, action, onResolved }: { snapshot: Snapshot; acti
     } finally { setResolving(false); }
   }
   return <><PageTitle title="Review Queue" subtitle="Resolve uncertain provider results without risking duplicate contact." tools={<button className="primary" type="button" disabled={!leads.length} onClick={reviewNext}>Review next</button>} />
-    {!leads.length ? <Panel><Empty title="Review queue is clear" body="There are no unresolved provider outcomes for this location." /></Panel> : <div className="two-col review-layout"><Panel title={`${leads.length} ${leads.length === 1 ? 'item needs' : 'items need'} attention`}>{leads.map((lead) => <button className={`review-item ${selected?.id === lead.id ? 'selected' : ''}`} key={lead.id} onClick={() => setSelectedId(lead.id)}><StatusBadge stage="attention" /><strong>{lead.full_name}</strong><span>{lead.review_reason}</span><small>{relative(lead.last_contacted_at)}</small></button>)}</Panel>
+    {loading && !snapshot.leads.length ? <Panel title="Loading review queue"><SkeletonRows rows={4} /></Panel> : !leads.length ? <Panel><Empty title="Review queue is clear" body="There are no unresolved provider outcomes for this location." /></Panel> : <div className="two-col review-layout"><Panel title={`${leads.length} ${leads.length === 1 ? 'item needs' : 'items need'} attention`}>{leads.map((lead) => <button className={`review-item ${selected?.id === lead.id ? 'selected' : ''}`} key={lead.id} onClick={() => setSelectedId(lead.id)}><StatusBadge stage="attention" /><strong>{lead.full_name}</strong><span>{lead.review_reason}</span><small>{relative(lead.last_contacted_at)}</small></button>)}</Panel>
       <Panel title={selected?.full_name ?? 'Review details'}>{selected && <><dl className="detail-list"><div><dt>Reason</dt><dd>{selected.review_reason}</dd></div><div><dt>Current status</dt><dd><StatusBadge stage="attention" /></dd></div><div><dt>Safe next step</dt><dd>Reconcile the provider result before any retry.</dd></div></dl><Alert tone="warning">Unknown create outcomes are never retried automatically.</Alert><button className="primary full" disabled={resolving} onClick={resolveReview}>{resolving ? 'Resolving…' : 'Resolve review'}</button></>}</Panel></div>}</>;
 }
 
@@ -491,7 +500,7 @@ function PageTitle({ title, subtitle, tools }: { title:string; subtitle:string; 
 function Panel({ title, children }: { title?:string; children:ReactNode }) { return <section className="panel">{title&&<h2>{title}</h2>}{children}</section>; }
 function DataTable({ heads, children }: { heads:string[]; children:ReactNode }) { return <div className="table-scroll"><table><thead><tr>{heads.map((head,index)=><th key={`${head}-${index}`}>{head}</th>)}</tr></thead><tbody>{children}</tbody></table></div>; }
 function Alert({ children, tone='info' }: { children:ReactNode; tone?:'info'|'warning'|'success' }) { return <div className={`alert ${tone}`}><b>{tone==='warning'?'!':tone==='success'?'✓':'i'}</b><div>{children}</div></div>; }
-function Empty({ title, body }: { title:string; body:string }) { return <div className="empty"><span>○</span><h2>{title}</h2><p>{body}</p></div>; }
+function Empty({ title, body }: { title:string; body:string }) { return <div className="empty"><h2>{title}</h2><p>{body}</p></div>; }
 function Stat({ label,value,trend }: { label:string; value:string; trend?:string }) { return <div className="stat"><small>{label}</small><strong>{value}</strong>{trend&&<span>{trend}</span>}</div>; }
 function Metric({ label,value,width,tone }: { label:string; value:string; width:string; tone?:string }) { return <div className={`metric ${tone??''}`}><div><span>{label}</span><strong>{value}</strong></div><i><b style={{width}} /></i></div>; }
 function Toggle({ label,enabled }: { label:string; enabled:boolean }) { const [on,setOn]=useState(enabled); return <div className="toggle-row"><span>{label}</span><button className={on?'on':''} type="button" aria-label={`Turn ${label} ${on ? 'off' : 'on'}`} aria-pressed={on} onClick={()=>setOn(!on)}><i /></button><b>{on?'ON':'OFF'}</b></div>; }

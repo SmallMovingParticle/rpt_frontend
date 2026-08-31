@@ -292,7 +292,7 @@ tr.row-booked td:first-child { border-left: 3px solid var(--green); }
 .toggle-row button.on i { margin-left: 22px; }
 .toggle-row b { font-size: 12px; color: var(--muted); }
 .empty-appointment,.empty { min-height: 190px; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
-.empty-appointment > span,.empty > span { width: 74px; height: 74px; border-radius: 50%; display: grid; place-items: center; background: #edf4ff; color: var(--blue); font-size: 33px; }
+.empty-appointment > span { width: 74px; height: 74px; border-radius: 50%; display: grid; place-items: center; background: #edf4ff; color: var(--blue); font-size: 33px; }
 .empty-appointment h2,.empty h2 { margin: 13px 0 5px; }
 .empty-appointment p,.empty p { color: var(--muted); margin: 0; }
 .availability { display: grid; gap: 8px; margin: 12px 0 18px; }
@@ -473,3 +473,8 @@ tr.row-booked td:first-child { border-left: 3px solid var(--green); }
 .workspace main { background: #f6f8fb; }
 .status-tiles > a { box-shadow: 0 1px 2px #0f172a0a; transition: box-shadow .15s, transform .15s; }
 .status-tiles > a:hover { box-shadow: 0 6px 18px #0f172a14; transform: translateY(-1px); }
+
+.skeleton-rows { display: flex; flex-direction: column; gap: 4px; }
+.skeleton-row { display: grid; grid-template-columns: 104px 1fr 88px; gap: 16px; align-items: center; padding: 18px 4px; border-bottom: 1px solid var(--line); }
+.skeleton-row:last-child { border-bottom: 0; }
+.skeleton-row-text { display: flex; flex-direction: column; gap: 8px; }
