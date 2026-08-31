@@ -18,9 +18,29 @@ const owners = ['Sarah Johnson', 'Michael Rodriguez'];
 type DashboardAction = (path: string, method: string, body?: unknown) => Promise<boolean>;
 
 const nav = [
-  ['/', 'HM', 'Home'], ['/leads', 'LD', 'Leads'], ['/appointments', 'AP', 'Appointments'],
-  ['/review', 'RQ', 'Review Queue'], ['/analytics', 'AN', 'Analytics'], ['/administration', 'AD', 'Administration'],
+  ['/', 'home', 'Home'], ['/leads', 'leads', 'Leads'], ['/appointments', 'appointments', 'Appointments'],
+  ['/review', 'review', 'Review Queue'], ['/analytics', 'analytics', 'Analytics'],
+  ['/administration', 'administration', 'Administration'],
 ] as const;
+
+// Inline so there is no icon dependency and both themes inherit currentColor.
+const NAV_ICONS: Record<string, ReactNode> = {
+  home: <path d="M3 10.2 12 3l9 7.2V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z" />,
+  leads: <><circle cx="9" cy="8" r="3.2" /><path d="M3 20a6 6 0 0 1 12 0" /><path d="M16 11.2a3 3 0 0 0 0-6" /><path d="M17.5 20a5.5 5.5 0 0 0-2.2-4.4" /></>,
+  appointments: <><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M3 10h18M8 3v4M16 3v4" /><path d="m9.5 15 1.8 1.8 3.5-3.6" /></>,
+  review: <><circle cx="12" cy="12" r="9" /><path d="M12 7.5v5.2M12 16.3v.2" /></>,
+  analytics: <><path d="M4 20V4" /><path d="M4 20h16" /><rect x="7.5" y="12" width="3" height="5" rx="1" /><rect x="13" y="8" width="3" height="9" rx="1" /></>,
+  administration: <><circle cx="12" cy="12" r="3" /><path d="M12 2.8v2.6M12 18.6v2.6M21.2 12h-2.6M5.4 12H2.8M18.5 5.5l-1.8 1.8M7.3 16.7l-1.8 1.8M18.5 18.5l-1.8-1.8M7.3 7.3 5.5 5.5" /></>,
+};
+
+function NavIcon({ name }: { name: string }) {
+  return (
+    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor"
+         strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      {NAV_ICONS[name]}
+    </svg>
+  );
+}
 
 export function DashboardShell({ displayName, localPreview = false }: { displayName: string; localPreview?: boolean }) {
   const pathname = usePathname();
@@ -167,7 +187,7 @@ export function DashboardShell({ displayName, localPreview = false }: { displayN
       <aside className="sidebar">
         <Link href="/" className="brand-mark" aria-label="Outreach Operations home"><span>O</span><i /></Link>
         <button className="menu-button" type="button" onClick={toggleNavigation} aria-label="Toggle navigation menu"><span /><span /><span /></button>
-        <nav aria-label="Primary navigation">{nav.map(([href, icon, label]) => <Link className={(href === '/' ? pathname === '/' : pathname.startsWith(href)) ? 'active' : ''} href={href} key={href} onClick={() => setMobileMenuOpen(false)}><b>{icon}</b><span>{label}</span></Link>)}</nav>
+        <nav aria-label="Primary navigation">{nav.map(([href, icon, label]) => <Link className={(href === '/' ? pathname === '/' : pathname.startsWith(href)) ? 'active' : ''} href={href} key={href} onClick={() => setMobileMenuOpen(false)}><b><NavIcon name={icon} /></b><span>{label}</span></Link>)}</nav>
       </aside>
       {mobileMenuOpen && <button className="nav-scrim" type="button" aria-label="Close navigation menu" onClick={() => setMobileMenuOpen(false)} />}
       <div className="workspace">
@@ -195,7 +215,8 @@ function renderPage(path: string, view: string | null, query: string | null, sta
   const leadDetail = requestedLeadId && detail && String(detail.lead.id) === requestedLeadId ? detail : null;
   if (requestedLeadId && !leadDetail) return <Empty title="Loading lead" body="Retrieving the latest database record and cadence activity." />;
   if (path === '/') return <HomePage snapshot={snapshot} loading={loading} />;
-  if (path === '/leads') return <LeadsPage key={`${view}-${query}-${stage}`} snapshot={snapshot} mode={view === 'list' ? 'list' : 'board'} initialQuery={query ?? ''} initialStage={stage as LeadStage | null} router={router} onAddLead={openAddLead} />;
+  if (path === '/leads' && loading && !snapshot.leads.length) return <><PageTitle title="Lead Pipeline" subtitle="Loading the latest pipeline…" /><SkeletonBoard /></>;
+  if (path === '/leads') return <LeadsPage key={`${view}-${query}-${stage}`} snapshot={snapshot} mode={view === 'list' ? 'list' : 'board'} initialQuery={query ?? ''} initialStage={stage as LeadStage | null} router={router} onAddLead={openAddLead} action={action} />;
   if (path === '/appointments') return <AppointmentsPage snapshot={snapshot} />;
   if (path === '/review') return <ReviewPage snapshot={snapshot} action={action} onResolved={onReviewResolved} />;
   if (path === '/analytics') return <AnalyticsPage snapshot={snapshot} />;
@@ -216,14 +237,57 @@ function HomePage({ snapshot, loading }: { snapshot: Snapshot; loading: boolean 
   // Today's Work is a to-do list, so finished leads do not belong in it.
   const work = snapshot.leads.filter((lead) => lead.stage !== 'closed' && lead.stage !== 'booked').slice(0, 5);
   return <><PageTitle title="Outreach Operations" subtitle="Good morning. Here is today’s operational picture." />
-    <StatusTiles counts={snapshot.counts} loading={loading} />
+    {loading && !snapshot.leads.length ? <SkeletonTiles /> : <StatusTiles counts={snapshot.counts} loading={loading} />}
     <div className="two-col wide-left"><Panel title="Today’s Work"><DataTable heads={['Lead', 'Status', 'Next step', 'Due', 'Action']}>{work.map((lead) => <tr key={lead.id}><td><Link href={`/leads/${lead.id}`}>{lead.full_name}</Link></td><td><StatusBadge stage={lead.stage} /></td><td>{lead.next_step ?? '—'}</td><td>{time(lead.next_scheduled_for)}</td><td><Link className="text-action" href={`/leads/${lead.id}`}>Open →</Link></td></tr>)}</DataTable><div className="panel-action"><Link className="primary" href={work[0] ? `/leads/${work[0].id}` : '/leads'}>Start next task</Link></div></Panel>
       <Panel title="Provider Overview">{snapshot.providers.map((provider) => <div className="provider-row" key={String(provider.name)}><ProviderIcon name={String(provider.name)} /><div><strong>{String(provider.name)}</strong><span>{String(provider.use ?? provider.mode)}</span></div><StatusText status={String(provider.status)} /><b>{provider.balance ? String(provider.balance) : 'Not exposed'}</b></div>)}<Link className="text-action footer-link" href="/administration/providers">View provider usage →</Link></Panel></div>
     <Panel title="Next Appointments"><div className="appointment-strip">{snapshot.appointments.slice(0, 3).map((item, index) => <div key={String(item.id ?? index)}><strong>{time(String(item.start_utc ?? ''))}</strong><span>{String(item.full_name ?? 'Scheduled lead')}</span><small>{String(item.location ?? 'Practice')}</small></div>)}</div></Panel></>;
 }
 
-function LeadsPage({ snapshot, mode, initialQuery, initialStage, router, onAddLead }: { snapshot: Snapshot; mode: 'board' | 'list'; initialQuery: string; initialStage: LeadStage | null; router: ReturnType<typeof useRouter>; onAddLead: () => void }) {
+function Skeleton({ w = '100%', h = 14 }: { w?: string; h?: number }) {
+  return <span className="skeleton" style={{ width: w, height: h }} aria-hidden="true" />;
+}
+
+function SkeletonBoard() {
+  // Mirrors the real board so the layout does not jump when data lands.
+  return <section className="pipeline" aria-busy="true" aria-label="Loading leads">
+    {(['new','cadence','attention','booked','closed'] as LeadStage[]).map((stage,column)=>
+      <article className={`pipeline-column ${stage}`} key={stage}>
+        <header><StatusGlyph stage={stage} /><h2>{statusMeta[stage].label}</h2><small>–</small></header>
+        <div className="lead-stack">{Array.from({length: column===1?3:1}).map((_,row)=>
+          <div className="lead-card skeleton-card" key={row}>
+            <Skeleton w="62%" h={17} /><Skeleton w="45%" /><Skeleton w="52%" h={24} /><Skeleton w="80%" />
+          </div>)}</div>
+      </article>)}
+  </section>;
+}
+
+function SkeletonTiles() {
+  return <section className="status-tiles" aria-busy="true">{Array.from({length:5}).map((_,index)=>
+    <div className="skeleton-tile" key={index}><span className="skeleton skeleton-circle" /><div><Skeleton w="72px" /><Skeleton w="40px" h={26} /></div></div>)}</section>;
+}
+
+function LeadsPage({ snapshot, mode, initialQuery, initialStage, router, onAddLead, action }: { snapshot: Snapshot; mode: 'board' | 'list'; initialQuery: string; initialStage: LeadStage | null; router: ReturnType<typeof useRouter>; onAddLead: () => void; action: DashboardAction }) {
   const [query, setQuery] = useState(initialQuery);
+  const [dragging, setDragging] = useState<string | null>(null);
+  const [over, setOver] = useState<LeadStage | null>(null);
+  const [moving, setMoving] = useState(false);
+
+  async function drop(stage: LeadStage) {
+    const id = dragging;
+    setOver(null);
+    setDragging(null);
+    if (!id || moving) return;
+    const lead = snapshot.leads.find((item) => item.id === id);
+    if (!lead || lead.stage === stage) return;
+    // Restarting contacts a real patient from day zero, so it is confirmed first.
+    if (stage === 'new' && !window.confirm(
+      `Restart outreach for ${lead.full_name}?
+
+The remaining schedule is discarded and a new cadence begins from today. They will be called and texted again from the first step.`
+    )) return;
+    setMoving(true);
+    try { await action(`leads/${id}/stage`, 'POST', { stage }); } finally { setMoving(false); }
+  }
   const [owner, setOwner] = useState('All Owners');
   const availableOwners = Array.from(new Set([...owners, ...snapshot.leads.map((lead) => lead.owner).filter(Boolean) as string[]]));
   const leads = snapshot.leads.filter((lead) =>
@@ -233,7 +297,7 @@ function LeadsPage({ snapshot, mode, initialQuery, initialStage, router, onAddLe
   );
   return <><PageTitle title="Lead Pipeline" subtitle="Select a lead to open their workspace." tools={<><div className="segmented" aria-label="Lead view"><Link className={mode === 'list' ? 'selected' : ''} href="/leads?view=list"><span className="view-icon">☷</span>List</Link><Link className={mode === 'board' ? 'selected' : ''} href="/leads"><span className="view-icon">▦</span>Board</Link></div><label className="filter-control"><span className="sr-only">Filter by owner</span><select value={owner} onChange={(event) => setOwner(event.target.value)}><option>All Owners</option>{availableOwners.map((item) => <option key={item}>{item}</option>)}</select></label><label className="search-field"><span aria-hidden="true">⌕</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search leads" /></label><button className="primary" type="button" onClick={onAddLead}>Add Lead</button></>} />
     {initialStage && <div className="active-filter">Showing {statusMeta[initialStage].label} leads <Link href="/leads">Clear filter</Link></div>}
-    {!leads.length ? <Panel><Empty title="No matching leads" body="Try another owner, location, or search term." /></Panel> : mode === 'board' ? <section className="pipeline">{(['new','cadence','attention','booked','closed'] as LeadStage[]).map((stage) => <article className={`pipeline-column ${stage}`} key={stage}><header><StatusGlyph stage={stage} /><h2>{statusMeta[stage].label}</h2><small>{leads.filter((lead) => lead.stage === stage).length}</small></header><div className="lead-stack">{leads.filter((lead) => lead.stage === stage).map((lead) => <LeadCard lead={lead} key={lead.id} onOpen={() => router.push(`/leads/${lead.id}`)} />)}</div></article>)}</section> :
+    {!leads.length ? <Panel><Empty title="No matching leads" body="Try another owner, location, or search term." /></Panel> : mode === 'board' ? <section className="pipeline">{(['new','cadence','attention','booked','closed'] as LeadStage[]).map((stage) => <article className={`pipeline-column ${stage} ${over === stage ? 'drop-target' : ''}`} key={stage} onDragOver={(event) => { event.preventDefault(); setOver(stage); }} onDragLeave={() => setOver((current) => current === stage ? null : current)} onDrop={(event) => { event.preventDefault(); void drop(stage); }}><header><StatusGlyph stage={stage} /><h2>{statusMeta[stage].label}</h2><small>{leads.filter((lead) => lead.stage === stage).length}</small></header><div className="lead-stack">{leads.filter((lead) => lead.stage === stage).map((lead) => <LeadCard lead={lead} key={lead.id} onOpen={() => router.push(`/leads/${lead.id}`)} dragging={dragging === lead.id} onDragStart={() => setDragging(lead.id)} onDragEnd={() => { setDragging(null); setOver(null); }} />)}{over === stage && dragging && <p className="drop-hint">{stage === 'new' ? 'Drop to restart outreach from day zero' : `Move to ${statusMeta[stage].label}`}</p>}</div></article>)}</section> :
       <Panel><DataTable heads={['Lead', 'Status', 'Owner', 'Source', 'Next step', 'Last contact', '']} >{leads.map((lead) => <tr key={lead.id} className={`row-${lead.stage}`}><td><strong>{lead.full_name}</strong><small>{lead.display_id}</small></td><td><StatusBadge stage={lead.stage} /></td><td>{lead.owner ?? 'Unassigned'}</td><td>{lead.source}</td><td>{lead.next_step ?? 'No planned action'}</td><td>{relative(lead.last_contacted_at)}</td><td><Link className="row-link" href={`/leads/${lead.id}`} aria-label={`Open ${lead.full_name}`}>→</Link></td></tr>)}</DataTable></Panel>}</>;
 }
 
@@ -417,7 +481,7 @@ function LeadHistoryPage({ detail }: { detail: LeadDetail }) {
 }
 
 function ConversationTabs({ id, active }: { id:string; active:'sms'|'calls' }) { return <nav className="conversation-tabs"><Link className={active==='sms'?'active':''} href={`/leads/${id}/conversations/sms`}>● SMS</Link><Link className={active==='calls'?'active':''} href={`/leads/${id}/conversations/calls`}>▤ Call transcripts</Link></nav>; }
-function LeadCard({ lead, onOpen }: { lead: Lead; onOpen:()=>void }) { const meta=statusMeta[lead.stage]; return <button className="lead-card" type="button" onClick={onOpen}><strong>{lead.full_name}</strong><span className="location">⌖ {lead.location ?? 'Not assigned'}</span><StatusBadge stage={lead.stage} />{lead.stage==='cadence'&&<span className="version">Standard v3 · {lead.cadence_progress ?? 0} of {lead.cadence_total ?? 0}</span>}<span className="next">{lead.stage === 'closed' || lead.stage === 'booked' ? 'Outcome' : 'Next'}: {lead.next_step ?? 'No planned action'}</span><span className="sr-only">{meta.label}</span></button>; }
+function LeadCard({ lead, onOpen, dragging = false, onDragStart, onDragEnd }: { lead: Lead; onOpen:()=>void; dragging?: boolean; onDragStart?: ()=>void; onDragEnd?: ()=>void }) { const meta=statusMeta[lead.stage]; return <button className={`lead-card ${dragging ? 'is-dragging' : ''}`} type="button" draggable={Boolean(onDragStart)} onDragStart={onDragStart} onDragEnd={onDragEnd} onClick={onOpen}><strong>{lead.full_name}</strong><span className="location">⌖ {lead.location ?? 'Not assigned'}</span><StatusBadge stage={lead.stage} />{lead.stage==='cadence'&&<span className="version">Standard v3 · {lead.cadence_progress ?? 0} of {lead.cadence_total ?? 0}</span>}<span className="next">{lead.stage === 'closed' || lead.stage === 'booked' ? 'Outcome' : 'Next'}: {lead.next_step ?? 'No planned action'}</span><span className="sr-only">{meta.label}</span></button>; }
 function StatusTiles({ counts, loading = false }: { counts: Record<LeadStage,number>; loading?: boolean }) { return <section className="status-tiles" aria-busy={loading}>{(['new','cadence','attention','booked','closed'] as LeadStage[]).map((stage)=><Link className={stage} href={`/leads?stage=${stage}`} key={stage}><StatusGlyph stage={stage} size="large" /><div><small>{statusMeta[stage].label}</small><strong>{loading ? "—" : counts[stage]}</strong></div></Link>)}</section>; }
 function StatusBadge({ stage }: { stage: LeadStage }) { return <span className={`status-pill ${stage}`}><StatusGlyph stage={stage} size="compact" />{statusMeta[stage].label}</span>; }
 function StatusGlyph({ stage, size = 'normal' }: { stage: LeadStage; size?: 'compact' | 'normal' | 'large' }) { return <span className={`status-glyph ${stage} ${size}`} aria-hidden="true"><i /></span>; }
