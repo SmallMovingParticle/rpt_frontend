@@ -24,9 +24,8 @@ a { color: inherit; text-decoration: none; }
 .app-shell.is-collapsed { grid-template-columns: 84px minmax(0,1fr); }
 .sidebar { width: 248px; min-height: 0; position: fixed; inset: 0 auto 0 0; z-index: 40; display: flex; flex-direction: column; overflow: hidden; background: linear-gradient(180deg, #001c4b 0%, var(--navy) 100%); color: #fff; padding: 27px 10px; transition: width .18s ease; }
 .is-collapsed .sidebar { width: 84px; }
-.brand-mark { width: 54px; height: 66px; margin: 0 11px 27px; position: relative; flex: 0 0 auto; font-size: 48px; font-weight: 700; line-height: 58px; }
-.brand-mark i, .brand-mark i::after { position: absolute; content: ''; width: 14px; height: 5px; background: var(--orange); bottom: 1px; left: 4px; transform: skewY(-18deg); }
-.brand-mark i::after { left: 14px; bottom: 3px; transform: skewY(18deg); }
+.brand-mark { width: 52px; height: 52px; margin: 0 11px 27px; flex: 0 0 auto; display: grid; place-items: center; border-radius: 12px; background: #0b3fb5; color: #fff; box-shadow: 0 2px 8px #00112f4d; }
+.brand-mark span { font-family: Georgia, 'Times New Roman', serif; font-size: 34px; font-weight: 700; line-height: 1; }
 .menu-button { border: 0; background: transparent; padding: 10px 14px; margin: 0 0 23px; display: grid; gap: 5px; flex: 0 0 auto; }
 .menu-button span { width: 27px; height: 3px; border-radius: 2px; background: #fff; display: block; }
 .sidebar nav { min-height: 0; display: grid; align-content: start; gap: 10px; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: none; -ms-overflow-style: none; }
@@ -353,7 +352,7 @@ tr.row-booked td:first-child { border-left: 3px solid var(--green); }
 @media (max-width: 760px) {
   .app-shell, .app-shell.is-collapsed { grid-template-columns: 70px minmax(0,1fr); }
   .sidebar, .is-collapsed .sidebar { width: 70px; padding-inline: 7px; }
-  .brand-mark { width: 48px; height: 58px; font-size: 43px; margin-bottom: 15px; }
+  .brand-mark { width: 46px; height: 46px; margin-bottom: 15px; }
   .menu-button { margin-bottom: 14px; }
   .topbar { height: auto; min-height: 78px; padding: 14px 18px; gap: 12px; }
   .product-name { display: none; }
@@ -491,3 +490,9 @@ tr.row-booked td:first-child { border-left: 3px solid var(--green); }
 .cadence-timeline.earlier { opacity: .72; margin-bottom: 18px; padding-bottom: 8px; border-bottom: 1px dashed var(--line); }
 .cadence-timeline.earlier > div { min-height: 50px; }
 .run-label { margin: 0 0 4px; font-size: 12px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+
+.phone-field { display: flex; align-items: stretch; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: #fff; }
+.phone-field i { display: grid; place-items: center; padding: 0 11px; font-style: normal; font-weight: 600; color: var(--muted); background: #f4f6fa; border-right: 1px solid var(--line); }
+.phone-field input { border: 0; border-radius: 0; flex: 1; min-width: 0; }
+.phone-field input:focus { outline: 2px solid var(--blue); outline-offset: -2px; }
+.field-error { display: block; margin-top: 6px; color: #b42318; font-size: 12px; }
