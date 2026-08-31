@@ -498,3 +498,7 @@ tr.row-booked td:first-child { border-left: 3px solid var(--green); }
 .field-error { display: block; margin-top: 6px; color: #b42318; font-size: 12px; }
 
 .home-work { display: grid; }
+
+/* A held cadence: amber-neutral so it reads as stopped, not as an error. */
+.status-pill.paused { --status: #7a5a10; background: #fdf6e3; border-color: #e8d9a8; color: #7a5a10; }
+.status-pill.paused svg { flex: 0 0 auto; }
