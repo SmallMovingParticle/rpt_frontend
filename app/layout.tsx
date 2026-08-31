@@ -8,9 +8,9 @@ const geistSans = Geist({
 });
 
 export const metadata: Metadata = {
-  title: 'Rausch Outreach CRM',
+  title: 'Outreach Operations CRM',
   description:
-    'Secure lead outreach and scheduling operations for Rausch Physical Therapy.',
+    'Secure lead outreach and scheduling operations for healthcare teams.',
 };
 
 export default function RootLayout({

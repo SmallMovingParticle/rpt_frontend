@@ -1,7 +1,7 @@
-# Rausch Outreach CRM
+# Outreach Operations CRM
 
-An internal operations dashboard for Rausch Physical Therapy & Wellness. The frontend gives authorized staff
-one place to create leads, monitor outreach cadences, review provider outcomes, manage appointments, and view
+An internal operations dashboard for a healthcare outreach workflow. The frontend gives authorized staff one
+place to create leads, monitor outreach cadences, review provider outcomes, manage appointments, and view
 operational analytics.
 
 <p>
@@ -11,7 +11,7 @@ operational analytics.
   <img alt="Vercel" src="https://img.shields.io/badge/Vercel-protected-000000?logo=vercel&logoColor=white">
 </p>
 
-> This repository contains the frontend only. It requires the companion RPT FastAPI service for data and
+> This repository contains the frontend only. It requires the companion FastAPI service for data and
 > provider actions.
 
 ## What it includes
@@ -24,26 +24,13 @@ operational analytics.
 - Analytics, cadence templates, SMS templates, and provider-health administration
 - Responsive desktop, tablet, and mobile layouts
 
-## Product preview
-
-The hosted environment is staff-only. These synthetic design-reference screens show the product without
-exposing patient or production data.
-
-| Lead pipeline | Lead workspace |
-| --- | --- |
-| ![Lead pipeline board](https://raw.githubusercontent.com/SmallMovingParticle/rpt_outbound_call_sms_agent/main/dashboard/salesforce-concept-v4-final/02-leads-board.jpg) | ![Lead workspace](https://raw.githubusercontent.com/SmallMovingParticle/rpt_outbound_call_sms_agent/main/dashboard/salesforce-concept-v4-final/10-lead-call-transcript.jpg) |
-
-| Appointments | Provider health |
-| --- | --- |
-| ![Appointments dashboard](https://raw.githubusercontent.com/SmallMovingParticle/rpt_outbound_call_sms_agent/main/dashboard/salesforce-concept-v4-final/04-appointments.jpg) | ![Provider usage and health](https://raw.githubusercontent.com/SmallMovingParticle/rpt_outbound_call_sms_agent/main/dashboard/salesforce-concept-v4-final/16-provider-usage-health.jpg) |
-
 ## Architecture
 
 ```mermaid
 flowchart LR
     Staff[Authorized staff] --> UI[Next.js / Vinext CRM]
     UI --> Proxy[Same-origin dashboard proxy]
-    Proxy --> API[RPT FastAPI service]
+    Proxy --> API[FastAPI service]
     API --> DB[(Supabase)]
     API --> Vapi[Vapi]
     API --> Twilio[Twilio]
@@ -64,7 +51,7 @@ backend operations.
 
 ## Run locally
 
-Requirements: Node.js 22.13 or newer and the RPT backend running at `http://localhost:8000`.
+Requirements: Node.js 22.13 or newer and the companion backend running at `http://localhost:8000`.
 
 ```powershell
 Copy-Item .env.example .env
@@ -79,7 +66,7 @@ Set the same strong `DASHBOARD_API_TOKEN` in the frontend and backend `.env` fil
 
 | Variable | Purpose |
 | --- | --- |
-| `DASHBOARD_API_ORIGIN` | Base URL of the RPT backend; production requires HTTPS. |
+| `DASHBOARD_API_ORIGIN` | Base URL of the companion backend; production requires HTTPS. |
 | `DASHBOARD_API_TOKEN` | Server-to-server dashboard credential. Never expose it with a `NEXT_PUBLIC_` prefix. |
 | `DASHBOARD_ALLOWED_EMAILS` | Comma-separated organization email allowlist used in production. |
 | `DASHBOARD_ALLOW_LOCAL_DEMO` | Local-only authentication bypass. It does not enable fixture or showcase leads. |

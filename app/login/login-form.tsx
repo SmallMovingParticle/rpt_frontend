@@ -35,7 +35,7 @@ export function LoginForm({ configured }: { configured: boolean }) {
   return (
     <main className="login-page">
       <form className="login-card" onSubmit={submit}>
-        <h1>Rausch Outreach CRM</h1>
+        <h1>Outreach Operations CRM</h1>
         <p className="login-hint">Staff sign-in required.</p>
 
         {!configured && (

@@ -165,14 +165,14 @@ export function DashboardShell({ displayName, localPreview = false }: { displayN
   return (
     <div className={`app-shell ${menuOpen ? '' : 'is-collapsed'} ${mobileMenuOpen ? 'mobile-menu-open' : ''}`}>
       <aside className="sidebar">
-        <Link href="/" className="brand-mark" aria-label="Rausch Physical Therapy home"><span>R</span><i /></Link>
+        <Link href="/" className="brand-mark" aria-label="Outreach Operations home"><span>O</span><i /></Link>
         <button className="menu-button" type="button" onClick={toggleNavigation} aria-label="Toggle navigation menu"><span /><span /><span /></button>
         <nav aria-label="Primary navigation">{nav.map(([href, icon, label]) => <Link className={(href === '/' ? pathname === '/' : pathname.startsWith(href)) ? 'active' : ''} href={href} key={href} onClick={() => setMobileMenuOpen(false)}><b>{icon}</b><span>{label}</span></Link>)}</nav>
       </aside>
       {mobileMenuOpen && <button className="nav-scrim" type="button" aria-label="Close navigation menu" onClick={() => setMobileMenuOpen(false)} />}
       <div className="workspace">
         <header className="topbar">
-          <Link href="/" className="wordmark"><strong>RAUSCH</strong><small>PHYSICAL THERAPY &amp; WELLNESS</small></Link>
+          <Link href="/" className="wordmark"><strong>OUTREACH</strong><small>OPERATIONS CRM</small></Link>
           <div className="product-name">{activeLabel}</div>
           <div className="top-actions">
             <label className="location-control"><span aria-hidden="true">⌖</span><select aria-label="Filter dashboard by location" value={selectedLocation} onChange={(event) => setSelectedLocation(event.target.value)}><option>All Locations</option>{locations.map((location) => <option key={location}>{location}</option>)}</select></label>
@@ -215,11 +215,11 @@ function renderPage(path: string, view: string | null, query: string | null, sta
 function HomePage({ snapshot, loading }: { snapshot: Snapshot; loading: boolean }) {
   // Today's Work is a to-do list, so finished leads do not belong in it.
   const work = snapshot.leads.filter((lead) => lead.stage !== 'closed' && lead.stage !== 'booked').slice(0, 5);
-  return <><PageTitle title="Rausch Outreach" subtitle="Good morning. Here is today’s operational picture." />
+  return <><PageTitle title="Outreach Operations" subtitle="Good morning. Here is today’s operational picture." />
     <StatusTiles counts={snapshot.counts} loading={loading} />
     <div className="two-col wide-left"><Panel title="Today’s Work"><DataTable heads={['Lead', 'Status', 'Next step', 'Due', 'Action']}>{work.map((lead) => <tr key={lead.id}><td><Link href={`/leads/${lead.id}`}>{lead.full_name}</Link></td><td><StatusBadge stage={lead.stage} /></td><td>{lead.next_step ?? '—'}</td><td>{time(lead.next_scheduled_for)}</td><td><Link className="text-action" href={`/leads/${lead.id}`}>Open →</Link></td></tr>)}</DataTable><div className="panel-action"><Link className="primary" href={work[0] ? `/leads/${work[0].id}` : '/leads'}>Start next task</Link></div></Panel>
       <Panel title="Provider Overview">{snapshot.providers.map((provider) => <div className="provider-row" key={String(provider.name)}><ProviderIcon name={String(provider.name)} /><div><strong>{String(provider.name)}</strong><span>{String(provider.use ?? provider.mode)}</span></div><StatusText status={String(provider.status)} /><b>{provider.balance ? String(provider.balance) : 'Not exposed'}</b></div>)}<Link className="text-action footer-link" href="/administration/providers">View provider usage →</Link></Panel></div>
-    <Panel title="Next Appointments"><div className="appointment-strip">{snapshot.appointments.slice(0, 3).map((item, index) => <div key={String(item.id ?? index)}><strong>{time(String(item.start_utc ?? ''))}</strong><span>{String(item.full_name ?? 'Scheduled lead')}</span><small>{String(item.location ?? 'Rausch PT')}</small></div>)}</div></Panel></>;
+    <Panel title="Next Appointments"><div className="appointment-strip">{snapshot.appointments.slice(0, 3).map((item, index) => <div key={String(item.id ?? index)}><strong>{time(String(item.start_utc ?? ''))}</strong><span>{String(item.full_name ?? 'Scheduled lead')}</span><small>{String(item.location ?? 'Practice')}</small></div>)}</div></Panel></>;
 }
 
 function LeadsPage({ snapshot, mode, initialQuery, initialStage, router, onAddLead }: { snapshot: Snapshot; mode: 'board' | 'list'; initialQuery: string; initialStage: LeadStage | null; router: ReturnType<typeof useRouter>; onAddLead: () => void }) {
@@ -244,7 +244,7 @@ function AppointmentsPage({ snapshot }: { snapshot: Snapshot }) {
   const appointments = todayOnly ? todayAppointments : snapshot.appointments;
   return <><PageTitle title="Appointments" subtitle={`${appointments.length} ${todayOnly ? 'scheduled today' : 'scheduled records'} · live Stride availability with protected booking controls.`} tools={<><button className={todayOnly ? 'primary' : 'secondary'} type="button" aria-pressed={todayOnly} onClick={() => setTodayOnly((current) => !current)}>{todayOnly ? 'Show all' : 'Today'}</button>{lead ? <Link className="primary" href={`/leads/${lead.id}/appointments`}>Check availability</Link> : <button className="primary" disabled>Check availability</button>}</>} />
     <Alert tone="warning">Availability is live. New appointment writes remain gated until the Stride appointment type is verified.</Alert>
-    <Panel title={todayOnly ? 'Today’s appointments' : 'Scheduled appointments'}>{appointments.length ? <div className="today-appointments">{appointments.map((appointment, index) => <article key={String(appointment.id ?? index)}><time>{date(String(appointment.start_utc ?? ''))}</time><div><strong>{String(appointment.full_name ?? 'Scheduled lead')}</strong><span>{String(appointment.type ?? 'Initial Evaluation')} · {String(appointment.location ?? 'Rausch PT')}</span></div><StatusText status={String(appointment.state ?? 'Scheduled')} /></article>)}</div> : <Empty title={todayOnly ? 'No appointments today' : 'No scheduled appointments'} body="Only appointment records returned by the database appear here." />}</Panel></>;
+    <Panel title={todayOnly ? 'Today’s appointments' : 'Scheduled appointments'}>{appointments.length ? <div className="today-appointments">{appointments.map((appointment, index) => <article key={String(appointment.id ?? index)}><time>{date(String(appointment.start_utc ?? ''))}</time><div><strong>{String(appointment.full_name ?? 'Scheduled lead')}</strong><span>{String(appointment.type ?? 'Initial Evaluation')} · {String(appointment.location ?? 'Practice')}</span></div><StatusText status={String(appointment.state ?? 'Scheduled')} /></article>)}</div> : <Empty title={todayOnly ? 'No appointments today' : 'No scheduled appointments'} body="Only appointment records returned by the database appear here." />}</Panel></>;
 }
 
 function ReviewPage({ snapshot, action, onResolved }: { snapshot: Snapshot; action: DashboardAction; onResolved: (id: string) => void }) {
@@ -391,7 +391,7 @@ function LeadOverview({ detail }: { detail: LeadDetail }) {
 function SmsPage({ detail, action }: { detail: LeadDetail; action: DashboardAction }) {
   const [message,setMessage]=useState(''); const [sending,setSending]=useState(false);
   async function submit(event:FormEvent){event.preventDefault();if(!message.trim())return;setSending(true);try{await action(`leads/${detail.lead.id}/sms`,'POST',{body:message,idempotency_key:crypto.randomUUID()});setMessage('');}finally{setSending(false)}}
-  return <><ConversationTabs id={String(detail.lead.id)} active="sms" /><div className="conversation-layout"><Panel title="SMS conversation"><div className="messages">{detail.messages.map((item)=><div className={`message ${item.direction}`} key={String(item.id)}><small>{item.direction === 'outbound' ? 'Rausch PT':String(detail.lead.full_name)} · {time(String(item.occurred_at))}</small><p>{String(item.body)}</p><span>{String(item.delivery_status)}</span></div>)}</div><form className="composer" onSubmit={submit}><textarea value={message} onChange={(event)=>setMessage(event.target.value)} maxLength={1600} placeholder="Write a patient-safe message…" /><div><span>{message.length}/1600</span><button className="primary" disabled={sending || !message.trim()}>{sending?'Sending…':'Send SMS'}</button></div></form></Panel><div className="stack"><Panel title="Conversation context"><dl className="detail-list"><div><dt>Status</dt><dd><StatusBadge stage={String(detail.lead.stage ?? 'cadence') as LeadStage} /></dd></div><div><dt>Next step</dt><dd>{String(detail.lead.next_step ?? 'No planned event')}</dd></div><div><dt>Consent</dt><dd><StatusText status="Contact permitted" /></dd></div><div><dt>Last activity</dt><dd>{relative(String(detail.lead.last_contacted_at ?? ''))}</dd></div></dl></Panel><Panel title="Safety"><p className="muted">This conversation belongs only to {String(detail.lead.full_name)}. DNC and SMS opt-out rules are checked again by the server before sending.</p></Panel></div></div></>;
+  return <><ConversationTabs id={String(detail.lead.id)} active="sms" /><div className="conversation-layout"><Panel title="SMS conversation"><div className="messages">{detail.messages.map((item)=><div className={`message ${item.direction}`} key={String(item.id)}><small>{item.direction === 'outbound' ? 'Practice Team':String(detail.lead.full_name)} · {time(String(item.occurred_at))}</small><p>{String(item.body)}</p><span>{String(item.delivery_status)}</span></div>)}</div><form className="composer" onSubmit={submit}><textarea value={message} onChange={(event)=>setMessage(event.target.value)} maxLength={1600} placeholder="Write a patient-safe message…" /><div><span>{message.length}/1600</span><button className="primary" disabled={sending || !message.trim()}>{sending?'Sending…':'Send SMS'}</button></div></form></Panel><div className="stack"><Panel title="Conversation context"><dl className="detail-list"><div><dt>Status</dt><dd><StatusBadge stage={String(detail.lead.stage ?? 'cadence') as LeadStage} /></dd></div><div><dt>Next step</dt><dd>{String(detail.lead.next_step ?? 'No planned event')}</dd></div><div><dt>Consent</dt><dd><StatusText status="Contact permitted" /></dd></div><div><dt>Last activity</dt><dd>{relative(String(detail.lead.last_contacted_at ?? ''))}</dd></div></dl></Panel><Panel title="Safety"><p className="muted">This conversation belongs only to {String(detail.lead.full_name)}. DNC and SMS opt-out rules are checked again by the server before sending.</p></Panel></div></div></>;
 }
 
 function CallsPage({ detail }: { detail: LeadDetail }) {
@@ -455,7 +455,7 @@ function exportLeadReport(snapshot: Snapshot) {
   const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
   const link = document.createElement('a');
   link.href = url;
-  link.download = 'rausch-lead-report.csv';
+  link.download = 'outreach-lead-report.csv';
   link.click();
   URL.revokeObjectURL(url);
 }
