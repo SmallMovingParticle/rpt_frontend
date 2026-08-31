@@ -213,7 +213,7 @@ function renderPage(path: string, view: string | null, query: string | null, sta
   // Narrowed to a non-null LeadDetail so the lead routes below typecheck; the
   // runtime behaviour is unchanged.
   const leadDetail = requestedLeadId && detail && String(detail.lead.id) === requestedLeadId ? detail : null;
-  if (requestedLeadId && !leadDetail) return <Empty title="Loading lead" body="Retrieving the latest database record and cadence activity." />;
+  if (requestedLeadId && !leadDetail) return <SkeletonLeadDetail />;
   if (path === '/') return <HomePage snapshot={snapshot} loading={loading} />;
   if (path === '/leads' && loading && !snapshot.leads.length) return <><PageTitle title="Lead Pipeline" subtitle="Loading the latest pipeline…" /><SkeletonBoard /></>;
   if (path === '/leads') return <LeadsPage key={`${view}-${query}-${stage}`} snapshot={snapshot} mode={view === 'list' ? 'list' : 'board'} initialQuery={query ?? ''} initialStage={stage as LeadStage | null} router={router} onAddLead={openAddLead} action={action} />;
@@ -264,6 +264,29 @@ function SkeletonBoard() {
 function SkeletonTiles() {
   return <section className="status-tiles" aria-busy="true">{Array.from({length:5}).map((_,index)=>
     <div className="skeleton-tile" key={index}><span className="skeleton skeleton-circle" /><div><Skeleton w="72px" /><Skeleton w="40px" h={26} /></div></div>)}</section>;
+}
+
+function SkeletonLeadDetail() {
+  // Mirrors LeadFrame: breadcrumb, header, tabs, then the two-column body, so
+  // the page does not reflow when the record arrives.
+  return <div aria-busy="true" aria-label="Loading lead">
+    <div className="breadcrumbs"><Skeleton w="96px" /><Skeleton w="88px" /><Skeleton w="120px" /></div>
+    <section className="lead-header">
+      <span className="skeleton skeleton-avatar" />
+      <div className="lead-identity"><Skeleton w="180px" h={26} /><Skeleton w="140px" /></div>
+      <Skeleton w="104px" h={30} /><Skeleton w="126px" h={30} />
+      <div className="record-actions"><Skeleton w="132px" h={40} /><Skeleton w="112px" h={40} /></div>
+    </section>
+    <nav className="record-tabs">{['Overview','Conversations','Cadence','Appointments','History'].map((tab)=>
+      <span key={tab}><Skeleton w={`${tab.length * 8 + 12}px`} /></span>)}</nav>
+    <div className="two-col wide-left">
+      <div className="stack">
+        <Panel title="Lead information"><SkeletonRows rows={3} /></Panel>
+        <Panel title="Next action"><SkeletonRows rows={1} /></Panel>
+      </div>
+      <Panel title="Recent activity"><SkeletonRows rows={3} /></Panel>
+    </div>
+  </div>;
 }
 
 function SkeletonRows({ rows = 4 }: { rows?: number }) {
