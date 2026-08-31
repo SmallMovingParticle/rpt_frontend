@@ -496,3 +496,5 @@ tr.row-booked td:first-child { border-left: 3px solid var(--green); }
 .phone-field input { border: 0; border-radius: 0; flex: 1; min-width: 0; }
 .phone-field input:focus { outline: 2px solid var(--blue); outline-offset: -2px; }
 .field-error { display: block; margin-top: 6px; color: #b42318; font-size: 12px; }
+
+.home-work { display: grid; }
