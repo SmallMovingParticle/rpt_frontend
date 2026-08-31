@@ -266,6 +266,18 @@ function SkeletonTiles() {
     <div className="skeleton-tile" key={index}><span className="skeleton skeleton-circle" /><div><Skeleton w="72px" /><Skeleton w="40px" h={26} /></div></div>)}</section>;
 }
 
+function MessageBody({ body }: { body: string }) {
+  // The stored body carries real newlines and a booking URL. Rendering it as
+  // plain text collapsed the layout and left the link unclickable, so URLs are
+  // split out here and the whitespace is preserved by CSS.
+  const parts = body.split(/(https?:\/\/[^\s]+)/g);
+  return <p className="message-body">{parts.map((part, index) =>
+    /^https?:\/\//.test(part)
+      ? <a key={index} href={part} target="_blank" rel="noopener noreferrer">{part}</a>
+      : <span key={index}>{part}</span>
+  )}</p>;
+}
+
 function SkeletonLeadDetail() {
   // Mirrors LeadFrame: breadcrumb, header, tabs, then the two-column body, so
   // the page does not reflow when the record arrives.
@@ -464,8 +476,11 @@ function LeadFrame({ detail, tab, action, children }: { detail: LeadDetail; tab:
   const id = String(lead.id);
   const stage = String(lead.stage ?? 'cadence') as LeadStage;
   const phone = String(lead.phone_e164 ?? lead.phone ?? 'No phone recorded');
-  const progress = Number(lead.cadence_progress ?? detail.events.filter((event) => event.status !== 'planned').length);
-  const total = Number(lead.cadence_total ?? detail.events.length);
+  // Count only the current cadence run: a restarted lead keeps its earlier
+  // events, and including them read as "12 of 16" on an eight-step cadence.
+  const currentRun = splitCadenceRuns(detail.events).at(-1) ?? [];
+  const progress = currentRun.filter((event) => event.status !== 'planned').length;
+  const total = currentRun.length;
   const [busy,setBusy] = useState(false);
   const cadencePaused = lead.cadence_state === 'paused';
   const cadenceOver = stage === 'closed' || stage === 'booked';
@@ -487,7 +502,7 @@ function LeadOverview({ detail }: { detail: LeadDetail }) {
 function SmsPage({ detail, action }: { detail: LeadDetail; action: DashboardAction }) {
   const [message,setMessage]=useState(''); const [sending,setSending]=useState(false);
   async function submit(event:FormEvent){event.preventDefault();if(!message.trim())return;setSending(true);try{await action(`leads/${detail.lead.id}/sms`,'POST',{body:message,idempotency_key:crypto.randomUUID()});setMessage('');}finally{setSending(false)}}
-  return <><ConversationTabs id={String(detail.lead.id)} active="sms" /><div className="conversation-layout"><Panel title="SMS conversation"><div className="messages">{detail.messages.map((item)=><div className={`message ${item.direction}`} key={String(item.id)}><small>{item.direction === 'outbound' ? 'Practice Team':String(detail.lead.full_name)} · {time(String(item.occurred_at))}</small><p>{String(item.body)}</p><span>{String(item.delivery_status)}</span></div>)}</div><form className="composer" onSubmit={submit}><textarea value={message} onChange={(event)=>setMessage(event.target.value)} maxLength={1600} placeholder="Write a patient-safe message…" /><div><span>{message.length}/1600</span><button className="primary" disabled={sending || !message.trim()}>{sending?'Sending…':'Send SMS'}</button></div></form></Panel><div className="stack"><Panel title="Conversation context"><dl className="detail-list"><div><dt>Status</dt><dd><StatusBadge stage={String(detail.lead.stage ?? 'cadence') as LeadStage} /></dd></div><div><dt>Next step</dt><dd>{String(detail.lead.next_step ?? 'No planned event')}</dd></div><div><dt>Consent</dt><dd><StatusText status="Contact permitted" /></dd></div><div><dt>Last activity</dt><dd>{relative(String(detail.lead.last_contacted_at ?? ''))}</dd></div></dl></Panel><Panel title="Safety"><p className="muted">This conversation belongs only to {String(detail.lead.full_name)}. DNC and SMS opt-out rules are checked again by the server before sending.</p></Panel></div></div></>;
+  return <><ConversationTabs id={String(detail.lead.id)} active="sms" /><div className="conversation-layout"><Panel title="SMS conversation"><div className="messages">{detail.messages.map((item)=><div className={`message ${item.direction}`} key={String(item.id)}><small>{item.direction === 'outbound' ? 'Practice Team':String(detail.lead.full_name)} · {time(String(item.occurred_at))}</small><MessageBody body={String(item.body)} /><span>{String(item.delivery_status)}</span></div>)}</div><form className="composer" onSubmit={submit}><textarea value={message} onChange={(event)=>setMessage(event.target.value)} maxLength={1600} placeholder="Write a patient-safe message…" /><div><span>{message.length}/1600</span><button className="primary" disabled={sending || !message.trim()}>{sending?'Sending…':'Send SMS'}</button></div></form></Panel><div className="stack"><Panel title="Conversation context"><dl className="detail-list"><div><dt>Status</dt><dd><StatusBadge stage={String(detail.lead.stage ?? 'cadence') as LeadStage} /></dd></div><div><dt>Next step</dt><dd>{String(detail.lead.next_step ?? 'No planned event')}</dd></div><div><dt>Consent</dt><dd><StatusText status="Contact permitted" /></dd></div><div><dt>Last activity</dt><dd>{relative(String(detail.lead.last_contacted_at ?? ''))}</dd></div></dl></Panel><Panel title="Safety"><p className="muted">This conversation belongs only to {String(detail.lead.full_name)}. DNC and SMS opt-out rules are checked again by the server before sending.</p></Panel></div></div></>;
 }
 
 function CallsPage({ detail }: { detail: LeadDetail }) {
@@ -496,9 +511,33 @@ function CallsPage({ detail }: { detail: LeadDetail }) {
   return <><ConversationTabs id={String(detail.lead.id)} active="calls" /><div className="call-layout"><Panel title="Call sessions">{detail.calls.map((call)=><button className={`call-session ${selected?.id===call.id?'selected':''}`} onClick={()=>setSelected(call)} key={String(call.id)}><span>☎</span><div><strong>{date(String(call.dialed_at))} · {duration(Number(call.duration_seconds))}</strong><small>{String(call.answer_state ?? 'pending').replace('_',' ')}</small></div></button>)}</Panel><Panel title="Call transcript"><div className="transcript">{turns.length ? turns.map((turn,index)=>{const [speaker,...words]=turn.split(':');return <div key={index}><b>{initials(speaker)}</b><p><strong>{speaker}</strong>{words.join(':')}</p></div>}) : <Empty title="No text transcript" body="This call did not produce transcript text." />}</div>{Boolean(selected?.summary_text) && <Alert><strong>AI call summary</strong><br />{String(selected.summary_text)}</Alert>}</Panel><Panel title="Call context"><dl className="detail-list"><div><dt>Provider result</dt><dd><StatusText status={String(selected?.ended_reason ?? selected?.answer_state ?? 'Pending')} /></dd></div><div><dt>Record</dt><dd>Provider call session</dd></div><div><dt>Duration</dt><dd>{duration(Number(selected?.duration_seconds ?? 0))}</dd></div><div><dt>Next action</dt><dd>{String(detail.lead.next_step ?? 'No planned event')}</dd></div></dl><Alert tone="success">Text transcript only. No audio recording is stored or exposed.</Alert></Panel></div></>;
 }
 
+function splitCadenceRuns(events: Array<Record<string, unknown>>) {
+  // Restarting a lead keeps the delivered history and adds a fresh cadence, so a
+  // lead can hold several runs. A run ends where the day offset goes backwards;
+  // callbacks carry no offset and stay with the run they interrupted.
+  const runs: Array<Array<Record<string, unknown>>> = [];
+  let current: Array<Record<string, unknown>> = [];
+  let previousDay = -1;
+  for (const event of events) {
+    const day = event.day_offset === null || event.day_offset === undefined ? null : Number(event.day_offset);
+    if (day !== null && day < previousDay && current.length) {
+      runs.push(current);
+      current = [];
+    }
+    if (day !== null) previousDay = day;
+    current.push(event);
+  }
+  if (current.length) runs.push(current);
+  return runs;
+}
+
 function LeadCadencePage({ detail, action }: { detail: LeadDetail; action: DashboardAction }) {
-  const currentIndex = detail.events.findIndex((event) => event.status === 'planned');
-  return <div className="two-col wide-left"><Panel title={`${String(detail.lead.full_name)}’s cadence`}><p className="panel-subtitle">Live database schedule · based on Standard v3</p><div className="cadence-timeline">{detail.events.map((event,index)=>{const status=String(event.status);const completed=status==='delivered';const skipped=status==='skipped';const pending=status==='attempted'||status==='in_flight';const issue=status==='failed'||status==='unknown';const current=index===currentIndex;const statusLabel=completed?'Completed':skipped?'Not sent · outreach ended':pending?'Awaiting provider result':issue?'Needs review':current?`Due ${date(String(event.scheduled_for))}`:'Upcoming';return <div className={`${completed?'completed':''} ${skipped?'skipped':''} ${current?'current':''} ${issue?'issue':''}`} key={String(event.id)}><span>{completed?'✓':skipped?'–':index+1}</span><b>{String(event.channel)==='call'?'☎':'●'}</b><strong>{event.day_offset === null || event.day_offset === undefined ? 'Callback' : `Day ${String(event.day_offset)}`} {String(event.channel).toUpperCase()}</strong><small>{statusLabel}</small>{current && <button className="icon-button" onClick={()=>{const value=window.prompt('New ISO date/time',String(event.scheduled_for));if(value)action(`leads/${detail.lead.id}/outreach-events/${event.id}`,'PATCH',{scheduled_for:value});}}>Edit</button>}</div>})}</div></Panel><div className="stack"><Panel title="Patient-specific controls"><p className="panel-subtitle">Overrides affect {String(detail.lead.full_name)} only.</p><dl className="detail-list"><div><dt>Assigned cadence</dt><dd>Standard v3</dd></div><div><dt>Time zone</dt><dd>{String(detail.lead.timezone ?? 'Not recorded')}</dd></div><div><dt>Preferred location</dt><dd>{String(detail.lead.location ?? 'Not assigned')}</dd></div><div><dt>Next send window</dt><dd>Business hours</dd></div></dl><button className="secondary full">Create local override</button></Panel><Panel title="Contact rules"><Toggle label="Do not contact" enabled={String(detail.lead.status)==='do_not_contact'} /><Toggle label="Call opt-out" enabled={Boolean(detail.lead.call_opt_out)} /><p className="muted">Do not contact blocks calls and SMS and cannot be bypassed.</p></Panel></div></div>;
+  const runs = splitCadenceRuns(detail.events);
+  const activeRun = runs[runs.length - 1] ?? [];
+  const earlierRuns = runs.slice(0, -1);
+  const [showEarlier, setShowEarlier] = useState(false);
+  const currentIndex = activeRun.findIndex((event) => event.status === 'planned');
+  return <div className="two-col wide-left"><Panel title={`${String(detail.lead.full_name)}’s cadence`}><p className="panel-subtitle">{runs.length > 1 ? `Current outreach · restart ${runs.length} of ${runs.length}` : 'Live database schedule · based on Standard v3'}</p>{earlierRuns.length > 0 && <div className="run-notice"><span>{earlierRuns.reduce((sum,run)=>sum+run.length,0)} step(s) from earlier outreach are kept for the record.</span><button className="text-action" type="button" onClick={()=>setShowEarlier((value)=>!value)}>{showEarlier ? 'Hide earlier outreach' : 'Show earlier outreach'}</button></div>}{showEarlier && earlierRuns.map((run,runIndex)=><div className="cadence-timeline earlier" key={`run-${runIndex}`}><p className="run-label">Earlier outreach {runIndex + 1}</p>{run.map((event)=><div className="completed" key={String(event.id)}><span>✓</span><b>{String(event.channel)==='call'?'☎':'●'}</b><strong>{event.day_offset === null || event.day_offset === undefined ? 'Callback' : `Day ${String(event.day_offset)}`} {String(event.channel).toUpperCase()}</strong><small>{String(event.status)==='skipped'?'Not sent':'Completed'}</small></div>)}</div>)}<div className="cadence-timeline">{activeRun.map((event,index)=>{const status=String(event.status);const completed=status==='delivered';const skipped=status==='skipped';const pending=status==='attempted'||status==='in_flight';const issue=status==='failed'||status==='unknown';const current=index===currentIndex;const statusLabel=completed?'Completed':skipped?'Not sent · outreach ended':pending?'Awaiting provider result':issue?'Needs review':current?`Due ${date(String(event.scheduled_for))}`:'Upcoming';return <div className={`${completed?'completed':''} ${skipped?'skipped':''} ${current?'current':''} ${issue?'issue':''}`} key={String(event.id)}><span>{completed?'✓':skipped?'–':index+1}</span><b>{String(event.channel)==='call'?'☎':'●'}</b><strong>{event.day_offset === null || event.day_offset === undefined ? 'Callback' : `Day ${String(event.day_offset)}`} {String(event.channel).toUpperCase()}</strong><small>{statusLabel}</small>{current && <button className="icon-button" onClick={()=>{const value=window.prompt('New ISO date/time',String(event.scheduled_for));if(value)action(`leads/${detail.lead.id}/outreach-events/${event.id}`,'PATCH',{scheduled_for:value});}}>Edit</button>}</div>})}</div></Panel><div className="stack"><Panel title="Patient-specific controls"><p className="panel-subtitle">Overrides affect {String(detail.lead.full_name)} only.</p><dl className="detail-list"><div><dt>Assigned cadence</dt><dd>Standard v3</dd></div><div><dt>Time zone</dt><dd>{String(detail.lead.timezone ?? 'Not recorded')}</dd></div><div><dt>Preferred location</dt><dd>{String(detail.lead.location ?? 'Not assigned')}</dd></div><div><dt>Next send window</dt><dd>Business hours</dd></div></dl><button className="secondary full">Create local override</button></Panel><Panel title="Contact rules"><Toggle label="Do not contact" enabled={String(detail.lead.status)==='do_not_contact'} /><Toggle label="Call opt-out" enabled={Boolean(detail.lead.call_opt_out)} /><p className="muted">Do not contact blocks calls and SMS and cannot be bypassed.</p></Panel></div></div>;
 }
 
 function LeadAppointmentsPage({ detail }: { detail: LeadDetail }) {
