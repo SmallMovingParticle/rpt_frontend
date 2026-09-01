@@ -518,22 +518,37 @@ function CallsPage({ detail }: { detail: LeadDetail }) {
 }
 
 function splitCadenceRuns(events: Array<Record<string, unknown>>) {
-  // Restarting a lead keeps the delivered history and adds a fresh cadence, so a
-  // lead can hold several runs. A run ends where the day offset goes backwards;
-  // callbacks carry no offset and stay with the run they interrupted.
-  const runs: Array<Array<Record<string, unknown>>> = [];
-  let current: Array<Record<string, unknown>> = [];
-  let previousDay = -1;
+  // A restart builds a fresh set of events in one go, so everything created in
+  // the same instant belongs to the same run. Grouping on that is exact.
+  //
+  // The earlier approach watched for the day offset going backwards, which broke
+  // as soon as two runs overlapped in time: sorted by schedule the days read
+  // 0,0,0,0,1,1,3,3... and never stepped back, so both runs rendered as one list.
+  const batches = new Map<string, Array<Record<string, unknown>>>();
+  const order: string[] = [];
   for (const event of events) {
-    const day = event.day_offset === null || event.day_offset === undefined ? null : Number(event.day_offset);
-    if (day !== null && day < previousDay && current.length) {
-      runs.push(current);
-      current = [];
-    }
-    if (day !== null) previousDay = day;
-    current.push(event);
+    const key = String(event.created_at ?? '');
+    if (!batches.has(key)) { batches.set(key, []); order.push(key); }
+    batches.get(key)!.push(event);
   }
-  if (current.length) runs.push(current);
+
+  const runs: Array<Array<Record<string, unknown>>> = [];
+  for (const key of order) {
+    const batch = batches.get(key)!;
+    // A callback is added on its own, outside any run. It belongs to whichever
+    // run it interrupted, not to a run of its own.
+    const isStandalone = batch.every((event) => event.cadence_step_id === null || event.cadence_step_id === undefined);
+    if (isStandalone && runs.length) runs[runs.length - 1].push(...batch);
+    else runs.push(batch);
+  }
+  if (!runs.length) return [];
+
+  // Within a run, keep the order the schedule actually runs in.
+  for (const run of runs) {
+    run.sort((a, b) => String(a.scheduled_for ?? '').localeCompare(String(b.scheduled_for ?? '')));
+  }
+  // Oldest run first, so the newest is last and reads as "current".
+  runs.sort((a, b) => String(a[0].created_at ?? '').localeCompare(String(b[0].created_at ?? '')));
   return runs;
 }
 
