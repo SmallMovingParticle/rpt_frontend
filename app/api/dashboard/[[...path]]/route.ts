@@ -5,7 +5,7 @@ const ALLOWED_METHODS = new Set(['GET', 'POST', 'PATCH', 'PUT', 'DELETE']);
 // Every backend route the browser may reach, listed explicitly. A path missing
 // from here is rejected with "dashboard path not allowed", so this must be
 // updated whenever a new dashboard endpoint is added.
-const ALLOWED_PATH = /^(snapshot|leads(?:\/[0-9a-f-]+(?:\/(?:cadence|stage|sms|outreach-events\/\d+|message-overrides\/\d+))?)?|review\/[0-9a-f-]+\/resolve|cadence-steps\/\d+|message-templates\/\d+)$/i;
+const ALLOWED_PATH = /^(snapshot|leads(?:\/[0-9a-f-]+(?:\/(?:cadence|cadence-mode|stage|sms|outreach-events\/\d+|message-overrides\/\d+))?)?|review\/[0-9a-f-]+\/resolve|cadence-versions(?:\/\d+(?:\/(?:activate|name|permanent))?)?|cadence-steps\/\d+|message-templates(?:\/\d+)?)$/i;
 
 async function proxy(request: NextRequest, context: { params: Promise<{ path?: string[] }> }) {
   if (!ALLOWED_METHODS.has(request.method)) {
@@ -43,7 +43,7 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path?: s
     return NextResponse.json({ detail: 'request too large' }, { status: 413 });
   }
 
-  const response = await fetch(`${origin}/api/v1/dashboard/${relativePath}`, {
+  const response = await fetch(`${origin}/api/v1/dashboard/${relativePath}${request.nextUrl.search}`, {
     method: request.method,
     cache: 'no-store',
     headers: {

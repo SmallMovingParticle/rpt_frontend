@@ -22,11 +22,39 @@ export type Lead = {
   location?: string;
   cadence_progress?: number;
   cadence_total?: number;
+  cadence_version_name?: string | null;
   owner?: string;
   date_of_birth?: string;
   referred_by?: string;
   lead_type?: 'Physical Therapy' | 'Wellness';
   is_test?: boolean;
+};
+
+export type CadenceStep = {
+  id?: number;
+  step_order: number;
+  day_offset: number;
+  channel: 'call' | 'sms';
+  key?: string;
+  description: string;
+  is_active: boolean;
+  sms_body: string | null;
+};
+
+export type CadenceVersion = {
+  id: number;
+  practice_id: number;
+  lead_id: string | null;
+  scope: 'global' | 'lead';
+  version_number: number;
+  name: string;
+  status: 'draft' | 'active' | 'archived' | 'deleted';
+  source_version_id: number | null;
+  activated_at: string | null;
+  deleted_at: string | null;
+  created_at: string;
+  updated_at: string;
+  steps: CadenceStep[];
 };
 
 export type LeadCreateInput = {
@@ -83,6 +111,7 @@ export type LeadDetail = {
   appointments: Array<Record<string, unknown>>;
   history: Array<Record<string, unknown>>;
   message_overrides: Array<Record<string, unknown>>;
+  cadence_version?: CadenceVersion | null;
 };
 
 export const emptySnapshot: Snapshot = {

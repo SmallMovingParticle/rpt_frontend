@@ -2,8 +2,8 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { FormEvent, ReactNode, useEffect, useMemo, useState } from 'react';
-import { emptySnapshot, Lead, LeadCreateInput, LeadDetail, LeadStage, Snapshot } from './dashboard-data';
+import { FormEvent, ReactNode, useEffect, useId, useMemo, useRef, useState } from 'react';
+import { CadenceStep, CadenceVersion, emptySnapshot, Lead, LeadCreateInput, LeadDetail, LeadStage, Snapshot } from './dashboard-data';
 
 const statusMeta: Record<LeadStage, { label: string }> = {
   new: { label: 'New' },
@@ -15,7 +15,7 @@ const statusMeta: Record<LeadStage, { label: string }> = {
 
 const locations = ['Dana Point', 'Laguna Niguel', 'Mission Viejo'];
 const owners = ['Sarah Johnson', 'Michael Rodriguez'];
-type DashboardAction = (path: string, method: string, body?: unknown) => Promise<boolean>;
+type DashboardAction = (path: string, method: string, body?: unknown) => Promise<Record<string, unknown> | null>;
 
 const nav = [
   ['/', 'home', 'Home'], ['/leads', 'leads', 'Leads'], ['/appointments', 'appointments', 'Appointments'],
@@ -42,6 +42,92 @@ function PlayIcon() {
   return <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor" aria-hidden="true">
     <path d="M7.5 4.8v14.4a1 1 0 0 0 1.53.85l11.2-7.2a1 1 0 0 0 0-1.7L9.03 3.95A1 1 0 0 0 7.5 4.8z" />
   </svg>;
+}
+function EnvelopeIcon() {
+  return <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
+    strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <rect x="3" y="5" width="18" height="14" rx="2" /><path d="m4 7 8 6 8-6" />
+  </svg>;
+}
+function MapPinIcon() {
+  return <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor"
+    strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M20 10c0 5.2-8 11-8 11S4 15.2 4 10a8 8 0 1 1 16 0Z" /><circle cx="12" cy="10" r="2.5" />
+  </svg>;
+}
+function ArrowIcon({ direction }: { direction: 'up' | 'down' }) {
+  return <svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor"
+    strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    {direction === 'up' ? <path d="m5 11 5-5 5 5M10 6v9" /> : <path d="m5 9 5 5 5-5M10 14V5" />}
+  </svg>;
+}
+
+function ChevronIcon({ open = false }: { open?: boolean }) {
+  return <svg className={open ? 'open' : ''} viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor"
+    strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m5 7.5 5 5 5-5" /></svg>;
+}
+
+function SidebarToggleIcon({ collapsed }: { collapsed: boolean }) {
+  return <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor"
+    strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <rect x="3.5" y="3.5" width="17" height="17" rx="3" />
+    <path d="M9 4v16" />
+    <path d={collapsed ? 'm13 9 3 3-3 3' : 'm16 9-3 3 3 3'} />
+  </svg>;
+}
+
+type SelectOption = { value: string; label: string };
+function SelectMenu({ value, options, onChange, ariaLabel, className = '', name, icon }: {
+  value: string; options: SelectOption[]; onChange: (value: string) => void; ariaLabel: string;
+  className?: string; name?: string; icon?: ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  const selectedIndex = Math.max(0, options.findIndex((option) => option.value === value));
+  const [activeIndex, setActiveIndex] = useState(selectedIndex);
+  const root = useRef<HTMLDivElement>(null);
+  const listId = `select-${useId().replaceAll(':', '')}`;
+
+  useEffect(() => {
+    if (!open) return;
+    const close = (event: PointerEvent) => { if (!root.current?.contains(event.target as Node)) setOpen(false); };
+    document.addEventListener('pointerdown', close);
+    return () => document.removeEventListener('pointerdown', close);
+  }, [open]);
+
+  function choose(index: number) {
+    const option = options[index];
+    if (!option) return;
+    onChange(option.value);
+    setActiveIndex(index);
+    setOpen(false);
+  }
+
+  function onKeyDown(event: React.KeyboardEvent<HTMLButtonElement>) {
+    if (event.key === 'Escape') { setOpen(false); return; }
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault();
+      setOpen(true);
+      setActiveIndex((current) => (current + (event.key === 'ArrowDown' ? 1 : -1) + options.length) % options.length);
+      return;
+    }
+    if (open && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); choose(activeIndex); }
+  }
+
+  return <div className={`select-menu ${className}`} ref={root}>
+    {name && <input type="hidden" name={name} value={value} />}
+    <button className="select-menu-trigger" type="button" role="combobox" aria-label={ariaLabel} aria-expanded={open}
+      aria-controls={listId} aria-activedescendant={open ? `${listId}-${activeIndex}` : undefined}
+      onKeyDown={onKeyDown} onClick={() => { setActiveIndex(selectedIndex); setOpen((current) => !current); }}>
+      {icon}<span>{options[selectedIndex]?.label ?? value}</span><ChevronIcon open={open} />
+    </button>
+    {open && <div className="select-menu-options" id={listId} role="listbox" aria-label={ariaLabel}>
+      {options.map((option, index) => <button id={`${listId}-${index}`} type="button" role="option"
+        aria-selected={option.value === value} className={`${option.value === value ? 'selected' : ''} ${index === activeIndex ? 'active' : ''}`}
+        key={option.value} onMouseEnter={() => setActiveIndex(index)} onClick={() => choose(index)}>
+        <span>{option.label}</span>{option.value === value && <span className="select-check" aria-hidden="true">✓</span>}
+      </button>)}
+    </div>}
+  </div>;
 }
 
 function toUsE164(raw: string): string | null {
@@ -127,20 +213,20 @@ export function DashboardShell({ displayName, localPreview = false }: { displayN
       if (!response.ok) {
         if (localPreview && !live) {
           showNotice('Saved in this local preview.');
-          return true;
+          return {};
         }
         throw new Error(data.detail ?? 'The update could not be completed.');
       }
       showNotice('Saved successfully.');
       setReloadKey((value) => value + 1);
-      return true;
+      return data;
     } catch (error) {
       if (localPreview && !live) {
         showNotice('Saved in this local preview.');
-        return true;
+        return {};
       }
       showNotice(error instanceof Error ? error.message : 'The update could not be completed.');
-      return false;
+      return null;
     }
   }
 
@@ -184,10 +270,10 @@ export function DashboardShell({ displayName, localPreview = false }: { displayN
     }));
   }
 
-  function publishTemplate(id: string, body: string) {
+  function publishTemplate(id: string, body: string, name: string) {
     setSnapshot((current) => ({
       ...current,
-      templates: current.templates.map((template) => String(template.id) === id ? { ...template, body } : template),
+      templates: current.templates.map((template) => String(template.id) === id ? { ...template, body, key: name, name } : template),
     }));
   }
 
@@ -208,17 +294,22 @@ export function DashboardShell({ displayName, localPreview = false }: { displayN
   return (
     <div className={`app-shell ${menuOpen ? '' : 'is-collapsed'} ${mobileMenuOpen ? 'mobile-menu-open' : ''}`}>
       <aside className="sidebar">
-        <Link href="/" className="brand-mark" aria-label="Rausch Physical Therapy home"><span>R</span></Link>
-        <button className="menu-button" type="button" onClick={toggleNavigation} aria-label="Toggle navigation menu"><span /><span /><span /></button>
+        <div className="sidebar-header">
+          <Link href="/" className="brand-mark" aria-label="Rausch Physical Therapy home"><span>R</span></Link>
+          <button className="menu-button" type="button" onClick={toggleNavigation}
+            aria-label={menuOpen ? 'Collapse navigation' : 'Expand navigation'} title={menuOpen ? 'Collapse navigation' : 'Expand navigation'}>
+            <SidebarToggleIcon collapsed={!menuOpen} />
+          </button>
+        </div>
         <nav aria-label="Primary navigation">{nav.map(([href, icon, label]) => <Link className={(href === '/' ? pathname === '/' : pathname.startsWith(href)) ? 'active' : ''} href={href} key={href} onClick={() => setMobileMenuOpen(false)}><b><NavIcon name={icon} /></b><span>{label}</span></Link>)}</nav>
       </aside>
       {mobileMenuOpen && <button className="nav-scrim" type="button" aria-label="Close navigation menu" onClick={() => setMobileMenuOpen(false)} />}
       <div className="workspace">
         <header className="topbar">
-          <Link href="/" className="wordmark"><strong>OUTREACH</strong><small>OPERATIONS CRM</small></Link>
+          <Link href="/" className="client-logo" aria-label="Rausch Physical Therapy & Wellness home"><span className="sr-only">Rausch Physical Therapy & Wellness</span></Link>
           <div className="product-name">{activeLabel}</div>
           <div className="top-actions">
-            <label className="location-control"><span aria-hidden="true">⌖</span><select aria-label="Filter dashboard by location" value={selectedLocation} onChange={(event) => setSelectedLocation(event.target.value)}><option>All Locations</option>{locations.map((location) => <option key={location}>{location}</option>)}</select></label>
+            <SelectMenu className="location-control" ariaLabel="Filter dashboard by location" value={selectedLocation} onChange={setSelectedLocation} icon={<MapPinIcon />} options={['All Locations', ...locations].map((location) => ({ value: location, label: location }))} />
             <form className="global-search" role="search" onSubmit={searchDashboard}><span aria-hidden="true">⌕</span><input aria-label="Global search" value={globalQuery} onChange={(event) => setGlobalQuery(event.target.value)} placeholder="Search leads, tasks, or appointments" /></form>
             <span className={`connection ${live ? 'live' : ''}`}><i />{live ? 'Connected' : 'Preview'}</span><button className="avatar" type="button" title={displayName}>{initials(displayName)}</button>
           </div>
@@ -231,24 +322,24 @@ export function DashboardShell({ displayName, localPreview = false }: { displayN
   );
 }
 
-function renderPage(path: string, view: string | null, query: string | null, stage: string | null, snapshot: Snapshot, loading: boolean, detail: LeadDetail | null, router: ReturnType<typeof useRouter>, action: DashboardAction, openAddLead: () => void, onReviewResolved: (id: string) => void, onTemplatePublished: (id: string, body: string) => void) {
+function renderPage(path: string, view: string | null, query: string | null, stage: string | null, snapshot: Snapshot, loading: boolean, detail: LeadDetail | null, router: ReturnType<typeof useRouter>, action: DashboardAction, openAddLead: () => void, onReviewResolved: (id: string) => void, onTemplatePublished: (id: string, body: string, name: string) => void) {
   const requestedLeadId = path.match(/^\/leads\/([0-9a-f-]+)/i)?.[1];
   // Narrowed to a non-null LeadDetail so the lead routes below typecheck; the
   // runtime behaviour is unchanged.
   const leadDetail = requestedLeadId && detail && String(detail.lead.id) === requestedLeadId ? detail : null;
-  if (requestedLeadId && !leadDetail) return <SkeletonLeadDetail />;
+  if (requestedLeadId && !leadDetail) return <SkeletonLeadDetail path={path} />;
   if (path === '/') return <HomePage snapshot={snapshot} loading={loading} />;
   if (path === '/leads' && loading && !snapshot.leads.length) return <><PageTitle title="Lead Pipeline" subtitle="Loading the latest pipeline…" /><SkeletonBoard /></>;
   if (path === '/leads') return <LeadsPage key={`${view}-${query}-${stage}`} snapshot={snapshot} mode={view === 'list' ? 'list' : 'board'} initialQuery={query ?? ''} initialStage={stage as LeadStage | null} router={router} onAddLead={openAddLead} action={action} />;
   if (path === '/appointments') return <AppointmentsPage snapshot={snapshot} loading={loading} />;
   if (path === '/review') return <ReviewPage snapshot={snapshot} action={action} onResolved={onReviewResolved} loading={loading} />;
-  if (path === '/analytics') return <AnalyticsPage snapshot={snapshot} />;
+  if (path === '/analytics') return <AnalyticsPage snapshot={snapshot} loading={loading} />;
   if (path === '/administration') return <AdministrationPage snapshot={snapshot} />;
-  if (path === '/administration/cadence') return <GlobalCadencePage snapshot={snapshot} action={action} />;
+  if (path === '/administration/cadence') return <GlobalCadencePage snapshot={snapshot} action={action} loading={loading} />;
   if (path === '/administration/templates') return <TemplateStudio snapshot={snapshot} action={action} onPublished={onTemplatePublished} />;
   if (/^\/leads\/[0-9a-f-]+\/conversations\/sms$/i.test(path)) return <LeadFrame detail={leadDetail!} tab="conversations" action={action}><SmsPage detail={leadDetail!} action={action} /></LeadFrame>;
   if (/^\/leads\/[0-9a-f-]+\/conversations\/calls$/i.test(path)) return <LeadFrame detail={leadDetail!} tab="conversations" action={action}><CallsPage detail={leadDetail!} /></LeadFrame>;
-  if (/^\/leads\/[0-9a-f-]+\/cadence$/i.test(path)) return <LeadFrame detail={leadDetail!} tab="cadence" action={action}><LeadCadencePage detail={leadDetail!} action={action} /></LeadFrame>;
+  if (/^\/leads\/[0-9a-f-]+\/cadence$/i.test(path)) return <LeadFrame detail={leadDetail!} tab="cadence" action={action}><LeadCadencePage detail={leadDetail!} action={action} templates={snapshot.templates} /></LeadFrame>;
   if (/^\/leads\/[0-9a-f-]+\/appointments$/i.test(path)) return <LeadFrame detail={leadDetail!} tab="appointments" action={action}><LeadAppointmentsPage detail={leadDetail!} /></LeadFrame>;
   if (/^\/leads\/[0-9a-f-]+\/history$/i.test(path)) return <LeadFrame detail={leadDetail!} tab="history" action={action}><LeadHistoryPage detail={leadDetail!} /></LeadFrame>;
   if (/^\/leads\/[0-9a-f-]+$/i.test(path)) return <LeadFrame detail={leadDetail!} tab="overview" action={action}><LeadOverview detail={leadDetail!} /></LeadFrame>;
@@ -260,7 +351,7 @@ function HomePage({ snapshot, loading }: { snapshot: Snapshot; loading: boolean 
   const work = snapshot.leads.filter((lead) => lead.stage !== 'closed' && lead.stage !== 'booked').slice(0, 5);
   return <><PageTitle title="Outreach Operations" subtitle="Good morning. Here is today’s operational picture." />
     {loading && !snapshot.leads.length ? <SkeletonTiles /> : <StatusTiles counts={snapshot.counts} loading={loading} />}
-    <div className="home-work"><Panel title="Today’s Work"><DataTable heads={['Lead', 'Status', 'Next step', 'Due', 'Action']}>{work.map((lead) => <tr key={lead.id}><td><Link href={`/leads/${lead.id}`}>{lead.full_name}</Link></td><td><StatusBadge stage={lead.stage} paused={lead.cadence_state === 'paused'} /></td><td>{lead.next_step ?? '—'}</td><td>{time(lead.next_scheduled_for)}</td><td><Link className="text-action" href={`/leads/${lead.id}`}>Open →</Link></td></tr>)}</DataTable><div className="panel-action"><Link className="primary" href={work[0] ? `/leads/${work[0].id}` : '/leads'}>Start next task</Link></div></Panel>
+    <div className="home-work"><Panel title="Today’s Work">{loading && !snapshot.leads.length ? <SkeletonRows rows={5} /> : <><DataTable heads={['Lead', 'Status', 'Next step', 'Due', 'Action']}>{work.map((lead) => <tr key={lead.id}><td><Link href={`/leads/${lead.id}`}>{lead.full_name}</Link></td><td><StatusBadge stage={lead.stage} paused={lead.cadence_state === 'paused'} /></td><td>{lead.next_step ?? '—'}</td><td>{time(lead.next_scheduled_for)}</td><td><Link className="text-action" href={`/leads/${lead.id}`}>Open →</Link></td></tr>)}</DataTable><div className="panel-action"><Link className="primary" href={work[0] ? `/leads/${work[0].id}` : '/leads'}>Start next task</Link></div></>}</Panel>
     </div>
     <Panel title="Next Appointments"><div className="appointment-strip">{snapshot.appointments.slice(0, 3).map((item, index) => <div key={String(item.id ?? index)}><strong>{time(String(item.start_utc ?? ''))}</strong><span>{String(item.full_name ?? 'Scheduled lead')}</span><small>{String(item.location ?? 'Practice')}</small></div>)}</div></Panel></>;
 }
@@ -300,10 +391,20 @@ function MessageBody({ body }: { body: string }) {
   )}</p>;
 }
 
-function SkeletonLeadDetail() {
+function SkeletonLeadDetail({ path }: { path: string }) {
   // Mirrors LeadFrame: breadcrumb, header, tabs, then the two-column body, so
   // the page does not reflow when the record arrives.
-  return <div aria-busy="true" aria-label="Loading lead">
+  const route = path.endsWith('/cadence') ? 'cadence' : path.endsWith('/history') ? 'history' : path.endsWith('/appointments') ? 'appointments' : path.includes('/conversations/calls') ? 'calls' : path.includes('/conversations/sms') ? 'sms' : 'overview';
+  const panels: Record<string, { left: string; right: string; lower?: string }> = {
+    overview: { left: 'Lead information', right: 'Recent activity', lower: 'Next action' },
+    cadence: { left: 'Outreach schedule', right: 'Personalized outreach', lower: 'Contact rules' },
+    history: { left: 'Activity history', right: 'Record controls' },
+    appointments: { left: 'Appointment', right: 'Appointment preferences', lower: 'Booking history' },
+    sms: { left: 'SMS conversation', right: 'Conversation context', lower: 'Safety' },
+    calls: { left: 'Call sessions', right: 'Call transcript', lower: 'Call context' },
+  };
+  const layout = panels[route];
+  return <div aria-busy="true" aria-label={`Loading lead ${route}`}>
     <div className="breadcrumbs"><Skeleton w="96px" /><Skeleton w="88px" /><Skeleton w="120px" /></div>
     <section className="lead-header">
       <span className="skeleton skeleton-avatar" />
@@ -313,12 +414,12 @@ function SkeletonLeadDetail() {
     </section>
     <nav className="record-tabs">{['Overview','Conversations','Cadence','Appointments','History'].map((tab)=>
       <span key={tab}><Skeleton w={`${tab.length * 8 + 12}px`} /></span>)}</nav>
-    <div className="two-col wide-left">
+    <div className={`two-col wide-left skeleton-lead-${route}`}>
       <div className="stack">
-        <Panel title="Lead information"><SkeletonRows rows={3} /></Panel>
-        <Panel title="Next action"><SkeletonRows rows={1} /></Panel>
+        <Panel title={layout.left}><SkeletonRows rows={route === 'overview' ? 3 : 5} /></Panel>
+        {layout.lower && route === 'overview' && <Panel title={layout.lower}><SkeletonRows rows={1} /></Panel>}
       </div>
-      <Panel title="Recent activity"><SkeletonRows rows={3} /></Panel>
+      <div className="stack"><Panel title={layout.right}><SkeletonRows rows={3} /></Panel>{layout.lower && route !== 'overview' && <Panel title={layout.lower}><SkeletonRows rows={2} /></Panel>}</div>
     </div>
   </div>;
 }
@@ -361,7 +462,7 @@ The remaining schedule is discarded and a new cadence begins from today. They wi
     (owner === 'All Owners' || (lead.owner ?? owners[0]) === owner) &&
     (!initialStage || lead.stage === initialStage)
   );
-  return <><PageTitle title="Lead Pipeline" subtitle="Select a lead to open their workspace." tools={<><div className="segmented" aria-label="Lead view"><Link className={mode === 'list' ? 'selected' : ''} href="/leads?view=list"><span className="view-icon">☷</span>List</Link><Link className={mode === 'board' ? 'selected' : ''} href="/leads"><span className="view-icon">▦</span>Board</Link></div><label className="filter-control"><span className="sr-only">Filter by owner</span><select value={owner} onChange={(event) => setOwner(event.target.value)}><option>All Owners</option>{availableOwners.map((item) => <option key={item}>{item}</option>)}</select></label><label className="search-field"><span aria-hidden="true">⌕</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search leads" /></label><button className="primary" type="button" onClick={onAddLead}>Add Lead</button></>} />
+  return <><PageTitle title="Lead Pipeline" subtitle="Select a lead to open their workspace." tools={<><div className="segmented" aria-label="Lead view"><Link className={mode === 'list' ? 'selected' : ''} href="/leads?view=list"><span className="view-icon">☷</span>List</Link><Link className={mode === 'board' ? 'selected' : ''} href="/leads"><span className="view-icon">▦</span>Board</Link></div><SelectMenu className="filter-control" ariaLabel="Filter leads by owner" value={owner} onChange={setOwner} options={['All Owners', ...availableOwners].map((item) => ({ value: item, label: item }))} /><label className="search-field"><span aria-hidden="true">⌕</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search leads" /></label><button className="primary" type="button" onClick={onAddLead}>Add Lead</button></>} />
     {initialStage && <div className="active-filter">Showing {statusMeta[initialStage].label} leads <Link href="/leads">Clear filter</Link></div>}
     {!leads.length ? <Panel><Empty title="No matching leads" body="Try another owner, location, or search term." /></Panel> : mode === 'board' ? <section className="pipeline">{(['new','cadence','attention','booked','closed'] as LeadStage[]).map((stage) => <article className={`pipeline-column ${stage} ${over === stage ? 'drop-target' : ''}`} key={stage} onDragOver={(event) => { event.preventDefault(); setOver(stage); }} onDragLeave={() => setOver((current) => current === stage ? null : current)} onDrop={(event) => { event.preventDefault(); void drop(stage); }}><header><StatusGlyph stage={stage} /><h2>{statusMeta[stage].label}</h2><small>{leads.filter((lead) => lead.stage === stage).length}</small></header><div className="lead-stack">{leads.filter((lead) => lead.stage === stage).map((lead) => <LeadCard lead={lead} key={lead.id} onOpen={() => router.push(`/leads/${lead.id}`)} dragging={dragging === lead.id} onDragStart={() => setDragging(lead.id)} onDragEnd={() => { setDragging(null); setOver(null); }} />)}{over === stage && dragging && <p className="drop-hint">{stage === 'new' ? 'Drop to restart outreach from day zero' : `Move to ${statusMeta[stage].label}`}</p>}</div></article>)}</section> :
       <Panel><DataTable heads={['Lead', 'Status', 'Owner', 'Source', 'Next step', 'Last contact', '']} >{leads.map((lead) => <tr key={lead.id} className={`row-${lead.stage}`}><td><strong>{lead.full_name}</strong><small>{lead.display_id}</small></td><td><StatusBadge stage={lead.stage} paused={lead.cadence_state === 'paused'} /></td><td>{lead.owner ?? 'Unassigned'}</td><td>{lead.source}</td><td>{lead.next_step ?? 'No planned action'}</td><td>{relative(lead.last_contacted_at)}</td><td><Link className="row-link" href={`/leads/${lead.id}`} aria-label={`Open ${lead.full_name}`}>→</Link></td></tr>)}</DataTable></Panel>}</>;
@@ -424,7 +525,7 @@ function leadMovementSeries(snapshot: Snapshot) {
   return { points, max: Math.max(...points.map((point) => point.value), 0) };
 }
 
-function AnalyticsPage({ snapshot }: { snapshot: Snapshot }) {
+function AnalyticsPage({ snapshot, loading }: { snapshot: Snapshot; loading: boolean }) {
   const total = Object.values(snapshot.counts).reduce((sum, value) => sum + value, 0);
   // Every figure below comes from the snapshot. Where the backend has no data
   // yet it sends null, and we show a dash rather than inventing a number.
@@ -432,6 +533,7 @@ function AnalyticsPage({ snapshot }: { snapshot: Snapshot }) {
   const pct = (value: number | null | undefined) => (value === null || value === undefined ? '—' : `${value}%`);
   const num = (value: number | null | undefined) => (value === null || value === undefined ? '—' : value.toLocaleString());
   const movement = leadMovementSeries(snapshot);
+  if (loading && !snapshot.leads.length) return <div aria-busy="true" aria-label="Loading analytics"><PageTitle title="Analytics" subtitle="Loading pipeline movement and outreach outcomes…" /><SkeletonTiles /><div className="two-col"><Panel title="Leads created · last 14 days"><SkeletonRows rows={4} /></Panel><Panel title="Cadence outcomes"><SkeletonRows rows={4} /></Panel></div><Panel title="Operational indicators"><SkeletonRows rows={3} /></Panel></div>;
   return <><PageTitle title="Analytics" subtitle="A concise view of pipeline movement and outreach outcomes." tools={<button className="primary" type="button" onClick={() => exportLeadReport(snapshot)}>Export report</button>} /><StatusTiles counts={snapshot.counts} />
     <div className="two-col"><Panel title="Leads created · last 14 days">{movement.max === 0 ? <Empty title="No leads yet" body="Leads created in the last fourteen days will appear here." /> : <><div className="bar-chart">{movement.points.map((point)=><i key={point.label} title={`${point.label}: ${point.value}`} style={{height:`${Math.round(point.value / movement.max * 100)}%`}}><span /></i>)}</div><div className="axis"><span>{movement.points[0]?.label}</span><span>{movement.points[movement.points.length-1]?.label}</span></div></>}</Panel><Panel title="Cadence outcomes"><Metric label="Calls reaching a person" value={pct(m?.calls_reached_rate)} width={`${m?.calls_reached_rate ?? 0}%`} /><Metric label="SMS confirmed delivered" value={pct(m?.messages_delivery_rate)} width={`${m?.messages_delivery_rate ?? 0}%`} /><Metric label="Booked" value={pct(m?.booked_rate)} width={`${m?.booked_rate ?? 0}%`} /><Metric label="Needs review" value={`${snapshot.counts.attention}`} width={`${m?.review_rate ?? 0}%`} tone="amber" /></Panel></div>
     <Panel title="Operational indicators"><div className="metric-grid"><Stat label="Total leads" value={String(total)} trend={`${snapshot.counts.closed} closed`} /><Stat label="SMS sent" value={num(m?.messages_sent)} trend={`${num(m?.messages_delivered)} confirmed delivered`} /><Stat label="SMS awaiting confirmation" value={num(m?.messages_pending)} trend={m?.messages_failed ? `${m.messages_failed} failed` : "none failed"} /><Stat label="Calls completed" value={num(m?.calls_completed)} trend={pct(m?.calls_completion_rate)} /><Stat label="Review rate" value={pct(m?.review_rate)} trend={`${snapshot.counts.attention} of ${total}`} /></div></Panel></>;
@@ -440,41 +542,282 @@ function AnalyticsPage({ snapshot }: { snapshot: Snapshot }) {
 function AdministrationPage({ snapshot }: { snapshot: Snapshot }) {
   const cards = [
     ['/administration/cadence','CD','Global Cadence Studio','Edit the eight-step outreach sequence for future execution.'],
-    ['/administration/templates','SM','SMS Template Studio','Manage global SMS copy and lead-specific overrides.'],
+    ['/administration/templates','SM','SMS Template Studio','Manage standard SMS copy and personalized patient messages.'],
     ['/appointments','BK','Booking Configuration','Review live availability and the fail-closed booking gate.'],
     ['/review','RV','Review & Reconciliation','Resolve unknown provider outcomes without blind retries.'],
     ['/analytics','AU','Audit & Reporting','Monitor activity, delivery, and operational results.'],
   ];
-  return <><PageTitle title="Administration" subtitle="Global defaults are kept separate from patient-specific controls." /><div className="admin-grid">{cards.map(([href,icon,title,body]) => <Link className="admin-card" href={href} key={href}><b>{icon}</b><div><h2>{title}</h2><p>{body}</p></div><span>→</span></Link>)}</div><Alert>All configuration changes are server-side, authenticated, and recorded in the dashboard audit log. DNC rules cannot be bypassed.</Alert><div className="metric-grid"><Stat label="Cadence steps" value={String(snapshot.cadence.length)} /><Stat label="SMS templates" value={String(snapshot.templates.length)} /><Stat label="Review queue" value={String(snapshot.system.review_queue ?? 0)} /><Stat label="Provider queue" value={String(snapshot.system.provider_queue ?? 0)} /></div></>;
+  return <><PageTitle title="Administration" subtitle="Organization-wide defaults are kept separate from personalized patient settings." /><div className="admin-grid">{cards.map(([href,icon,title,body]) => <Link className="admin-card" href={href} key={href}><b>{icon}</b><div><h2>{title}</h2><p>{body}</p></div><span>→</span></Link>)}</div><Alert>All configuration changes are server-side, authenticated, and recorded in the dashboard audit log. DNC rules cannot be bypassed.</Alert><div className="metric-grid"><Stat label="Cadence steps" value={String(snapshot.cadence.length)} /><Stat label="SMS templates" value={String(snapshot.templates.length)} /><Stat label="Review queue" value={String(snapshot.system.review_queue ?? 0)} /><Stat label="Provider queue" value={String(snapshot.system.provider_queue ?? 0)} /></div></>;
 }
 
-function GlobalCadencePage({ snapshot, action }: { snapshot: Snapshot; action: DashboardAction }) {
-  return <><PageTitle title="Global Cadence Studio" subtitle="Audited outreach defaults for all new leads." /><Alert>Global edits apply to future cadence execution. Patient-specific schedules remain unchanged.</Alert>
-    <div className="two-col wide-left"><Panel title="Standard v3"> <DataTable heads={['Step','Day','Action','Channel','Status','']}>{snapshot.cadence.map((item,index)=><tr key={String(item.id)}><td><span className="step-number">{index+1}</span></td><td>Day {String(item.day_offset)}</td><td><strong>{String(item.description)}</strong></td><td>{String(item.channel) === 'call' ? '☎ Vapi Call' : '● Twilio SMS'}</td><td><StatusText status={item.is_active ? 'Active' : 'Disabled'} /></td><td><button className="icon-button" onClick={() => { const description=window.prompt('Cadence step description',String(item.description)); if(description) action(`cadence-steps/${item.id}`,'PATCH',{description}); }}>Edit</button></td></tr>)}</DataTable></Panel><div className="stack"><Panel title="Version details"><dl className="detail-list"><div><dt>Status</dt><dd><StatusText status="Active" /></dd></div><div><dt>Version</dt><dd>Standard v3</dd></div><div><dt>Time zone</dt><dd>Pacific</dd></div><div><dt>Steps</dt><dd>{snapshot.cadence.length}</dd></div></dl></Panel><Panel title="Guardrails"><ul className="check-list"><li>✓ DNC enforced</li><li>✓ Call opt-out enforced</li><li>✓ Business-hour windows</li><li>✓ Audited changes</li></ul></Panel></div></div></>;
+function GlobalCadencePage({ snapshot, action, loading }: { snapshot: Snapshot; action: DashboardAction; loading: boolean }) {
+  return <><PageTitle title="Global Cadence Studio" subtitle="Build, compare, and activate audited outreach versions." /><Alert>Activation replaces only future planned work. In-flight and completed outreach stays intact, and personalized patient plans remain unchanged.</Alert>
+    <CadenceStudio action={action} templates={snapshot.templates} loading={loading && !snapshot.cadence.length} />
+  </>;
 }
 
-function TemplateStudio({ snapshot, action, onPublished }: { snapshot: Snapshot; action: DashboardAction; onPublished: (id: string, body: string) => void }) {
-  const [selectedId, setSelectedId] = useState('2');
-  const [drafts, setDrafts] = useState<Record<string, string>>({});
+function CadenceStudio({ action, templates, leadId, loading = false }: { action: DashboardAction; templates: Array<Record<string, unknown>>; leadId?: string; loading?: boolean }) {
+  const [versions, setVersions] = useState<CadenceVersion[]>([]);
+  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [fetching, setFetching] = useState(true);
+  const [creating, setCreating] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [hardDeleting, setHardDeleting] = useState<number | null>(null);
+  const [renaming, setRenaming] = useState(false);
+  const [renameValue, setRenameValue] = useState('');
+  const [switchingMode, setSwitchingMode] = useState(false);
+  const [personalizedMode, setPersonalizedMode] = useState(false);
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [refresh, setRefresh] = useState(0);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const query = leadId ? `?lead_id=${encodeURIComponent(leadId)}` : '';
+    fetch(`/api/dashboard/cadence-versions${query}`, { cache: 'no-store', signal: controller.signal })
+      .then((response) => response.ok ? response.json() as Promise<{ versions: CadenceVersion[] }> : Promise.reject())
+      .then((data) => {
+        setVersions(data.versions);
+        const scoped = data.versions.filter((version) => (leadId ? version.scope === 'lead' && version.status !== 'deleted' : version.scope === 'global'));
+        const preferred = scoped.filter((version) => version.status !== 'deleted');
+        setSelectedId((current) => scoped.some((version) => version.id === current)
+          ? current
+          : (preferred.find((version) => version.status === 'draft') ?? preferred.find((version) => version.status === 'active') ?? preferred[0])?.id ?? null);
+        if (leadId) setPersonalizedMode(data.versions.some((version) => version.scope === 'lead' && version.status === 'active'));
+        setError('');
+      })
+      .catch((cause) => { if (cause?.name !== 'AbortError') setError('Cadence versions could not be loaded.'); })
+      .finally(() => setFetching(false));
+    return () => controller.abort();
+  }, [leadId, refresh]);
+
+  const scoped = versions.filter((version) => version.status !== 'deleted' && (leadId ? version.scope === 'lead' : version.scope === 'global'));
+  const deleted = versions.filter((version) => version.status === 'deleted' && version.scope === 'global');
+  const selectable = leadId ? scoped : [...scoped, ...deleted];
+  const selected = selectable.find((version) => version.id === selectedId) ?? scoped[0];
+  const activePersonalized = leadId ? scoped.find((version) => version.status === 'active') : undefined;
+  const standard = versions.find((version) => version.status === 'active' && version.scope === 'global');
+  const source = selected ?? versions.find((version) => version.status === 'active' && version.scope === 'global');
+
+  async function cloneVersion(sourceVersion: CadenceVersion | undefined = source, openEditor = true) {
+    if (!sourceVersion || creating) return;
+    setCreating(true);
+    try {
+      const created = await action('cadence-versions', 'POST', {
+        source_version_id: sourceVersion.id,
+        lead_id: leadId ?? null,
+      }) as unknown as CadenceVersion | null;
+      if (created?.id) {
+        setVersions((current) => [...current, created]);
+        setSelectedId(created.id);
+        if (leadId && openEditor) setEditorOpen(true);
+      }
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  async function saveName() {
+    if (!selected || !renameValue.trim() || renaming) return;
+    setRenaming(true);
+    try {
+      const renamed = await action(`cadence-versions/${selected.id}/name`, 'PATCH', { name: renameValue.trim() }) as unknown as CadenceVersion | null;
+      if (renamed?.id) {
+        setVersions((current) => current.map((version) => version.id === renamed.id ? renamed : version));
+        setRenameValue('');
+      }
+    } finally {
+      setRenaming(false);
+    }
+  }
+
+  async function chooseStandard() {
+    if (!leadId || switchingMode) return;
+    if (!activePersonalized) {
+      setPersonalizedMode(false);
+      setEditorOpen(false);
+      return;
+    }
+    if (!window.confirm('Switch this patient to the standard outreach plan? Only future planned steps will be replaced.')) return;
+    setSwitchingMode(true);
+    try {
+      if (await action(`leads/${leadId}/cadence-mode`, 'POST', { mode: 'standard' })) {
+        setPersonalizedMode(false);
+        setEditorOpen(false);
+        setRefresh((value) => value + 1);
+      }
+    } finally {
+      setSwitchingMode(false);
+    }
+  }
+
+  async function choosePersonalized() {
+    if (!leadId || switchingMode) return;
+    setPersonalizedMode(true);
+    const preferred = scoped.find((version) => version.status === 'draft') ?? activePersonalized ?? scoped[0];
+    if (preferred) setSelectedId(preferred.id);
+    else await cloneVersion(standard, false);
+  }
+
+  async function deleteVersion() {
+    if (!selected || selected.status === 'active' || deleting) return;
+    if (!window.confirm(`Delete ${selected.name}? It will remain available in Deleted versions for audit history.`)) return;
+    setDeleting(true);
+    try {
+      const removed = await action(`cadence-versions/${selected.id}`, 'DELETE') as unknown as CadenceVersion | null;
+      if (removed?.status === 'deleted') {
+        setSelectedId(scoped.find((version) => version.id !== selected.id)?.id ?? null);
+        setRefresh((value) => value + 1);
+      }
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  async function permanentlyDeleteVersion(version: CadenceVersion) {
+    if (version.status !== 'deleted' || hardDeleting !== null) return;
+    if (!window.confirm(`Permanently delete ${version.name}?\n\nThis removes its cadence steps and message copy from the database and cannot be undone.`)) return;
+    setHardDeleting(version.id);
+    try {
+      const removed = await action(`cadence-versions/${version.id}/permanent`, 'DELETE');
+      if (removed?.status === 'permanently_deleted') {
+        setVersions((current) => current.filter((item) => item.id !== version.id));
+        if (selectedId === version.id) setSelectedId(scoped[0]?.id ?? null);
+        setRefresh((value) => value + 1);
+      }
+    } finally {
+      setHardDeleting(null);
+    }
+  }
+
+  if (loading || fetching) return <Panel title={leadId ? 'Personalized outreach plan' : 'Loading cadence versions'}><SkeletonRows rows={5} /></Panel>;
+  if (error) return <Alert tone="warning">{error}</Alert>;
+
+  if (leadId) return <>
+    <div className="plan-mode-card"><div><strong>Outreach plan</strong><p>{personalizedMode ? 'A personalized sequence is selected for this patient.' : `Currently using ${standard?.name ?? 'the standard outreach plan'}.`}</p></div><div className="plan-mode-switch" role="group" aria-label="Choose outreach plan"><button type="button" className={!personalizedMode ? 'selected' : ''} aria-pressed={!personalizedMode} disabled={switchingMode} onClick={chooseStandard}>Standard outreach</button><button type="button" className={personalizedMode ? 'selected' : ''} aria-pressed={personalizedMode} disabled={switchingMode || creating || !standard} onClick={choosePersonalized}>Personalized outreach</button></div></div>
+    {personalizedMode && <div className="personal-plan-summary">
+      {scoped.length > 1 && <div className="field-label"><span>Saved plans</span><SelectMenu ariaLabel="Choose a saved personalized plan" value={String(selected?.id ?? '')} onChange={(value) => setSelectedId(Number(value))} options={scoped.map((version) => ({ value: String(version.id), label: `${version.name} · ${cadenceStatusLabel(version.status)}` }))} /></div>}
+      {selected ? <div className="plan-summary-row"><div><strong>{selected.name}</strong><small>{cadenceStatusLabel(selected.status)} · {selected.steps.length} steps</small></div><button className="secondary" type="button" disabled={creating} onClick={selected.status === 'draft' ? () => setEditorOpen(true) : () => cloneVersion(selected)}>{creating ? 'Preparing…' : selected.status === 'draft' ? 'Continue setup' : 'Edit as new plan'}</button></div> : <div className="plan-summary-row"><div><strong>{creating ? 'Preparing a personalized plan…' : 'No personalized plan yet'}</strong><small>The standard sequence will be copied before you edit it.</small></div><button className="secondary" type="button" disabled={creating || !standard} onClick={() => cloneVersion(standard)}>{creating ? 'Preparing…' : 'Create plan'}</button></div>}
+    </div>}
+    {editorOpen && selected?.status === 'draft' && <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setEditorOpen(false); }}><section className="modal plan-editor-modal" role="dialog" aria-modal="true" aria-labelledby="personal-plan-title" onKeyDown={(event) => { if (event.key === 'Escape') setEditorOpen(false); }}><header><div><h2 id="personal-plan-title">Personalized outreach plan</h2><p>Select one step at a time. Changes apply only to this patient.</p></div><button className="close-button" type="button" onClick={() => setEditorOpen(false)} aria-label="Close personalized plan editor">×</button></header><div className="plan-editor-body"><CadenceEditor key={`${selected.id}-${selected.name}`} version={selected} templates={templates} action={action} local onChanged={(activated) => { setEditorOpen(false); setPersonalizedMode(activated); setRefresh((value) => value + 1); }} /></div></section></div>}
+  </>;
+
+  if (!selected) return <Panel><Empty title="No cadence configured" body="Create and seed an active global cadence before adding versions." /></Panel>;
+
+  return <div className="cadence-version-layout"><section className="cadence-studio">
+    <div className="version-tabs" role="tablist" aria-label="Global cadence versions">
+      {scoped.map((version) => <button type="button" role="tab" aria-selected={version.id === selected.id} className={version.id === selected.id ? 'selected' : ''} onClick={() => setSelectedId(version.id)} key={version.id}><span>{version.name}</span><small>{cadenceStatusLabel(version.status)}</small></button>)}
+      <button className="add-version" type="button" disabled={creating} onClick={() => cloneVersion()}>{creating ? 'Creating…' : '+ Add version'}</button>
+    </div>
+    <div className="version-toolbar"><div>{renameValue ? <label className="version-name-editor"><span className="sr-only">Version name</span><input autoFocus value={renameValue} maxLength={120} onChange={(event) => setRenameValue(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') saveName(); if (event.key === 'Escape') setRenameValue(''); }} /></label> : <strong>{selected.name}</strong>}<small>{selected.status === 'deleted' ? 'This complete version is retained and can be reused as a new draft.' : selected.status === 'active' ? 'Activate another version before deleting the current plan.' : 'Deleting keeps the complete version available here.'}</small></div><div className="version-toolbar-actions">{renameValue ? <><button className="secondary" type="button" disabled={renaming || !renameValue.trim()} onClick={saveName}>{renaming ? 'Saving…' : 'Save name'}</button><button className="secondary" type="button" onClick={() => setRenameValue('')}>Cancel</button></> : <button className="secondary" type="button" onClick={() => setRenameValue(selected.name)}>Rename</button>}{selected.status === 'deleted' ? <button className="primary" type="button" disabled={creating} onClick={() => cloneVersion(selected)}>{creating ? 'Creating…' : 'Reuse as new draft'}</button> : <button className="danger-button" type="button" disabled={selected.status === 'active' || deleting} onClick={deleteVersion}>{deleting ? 'Deleting…' : 'Delete version'}</button>}</div></div>
+    {selected.status === 'draft'
+      ? <CadenceEditor key={`${selected.id}-${selected.name}`} version={selected} templates={templates} action={action} local={false} onChanged={() => setRefresh((value) => value + 1)} />
+      : <div className="two-col wide-left"><Panel title={selected.name}><CadenceStepsTable steps={selected.steps} /></Panel><div className="stack"><Panel title="Version details"><dl className="detail-list"><div><dt>Status</dt><dd><StatusText status={cadenceStatusLabel(selected.status)} /></dd></div><div><dt>Version</dt><dd>v{selected.version_number}</dd></div><div><dt>Scope</dt><dd>Global default</dd></div><div><dt>Steps</dt><dd>{selected.steps.length}</dd></div></dl><button className="primary full" type="button" disabled={creating} onClick={() => cloneVersion(selected)}>{creating ? 'Creating…' : selected.status === 'deleted' ? 'Reuse as new draft' : 'Edit as new draft'}</button></Panel><Panel title="Guardrails"><ul className="check-list"><li>✓ DNC enforced</li><li>✓ Call opt-out enforced</li><li>✓ Business-hour windows</li><li>✓ Audited changes</li></ul></Panel></div></div>}
+  </section><aside className="deleted-versions"><header><div><h2>Deleted versions</h2><p>Review, reuse, or permanently remove</p></div><span>{deleted.length}</span></header>{deleted.length ? <div className="deleted-version-list">{deleted.map((version) => <article className={version.id === selected.id ? 'selected' : ''} key={version.id}><button type="button" className="deleted-version-select" aria-pressed={version.id === selected.id} onClick={() => { setSelectedId(version.id); setRenameValue(''); }}><strong>{version.name}</strong><small>Deleted {version.deleted_at ? date(version.deleted_at) : 'recently'}</small><span>v{version.version_number} · {version.steps.length} steps</span></button><button className="permanent-delete" type="button" disabled={hardDeleting !== null} onClick={() => permanentlyDeleteVersion(version)} aria-label={`Permanently delete ${version.name}`}>{hardDeleting === version.id ? 'Deleting…' : 'Permanently delete'}</button></article>)}</div> : <p className="deleted-empty">Deleted cadence versions will appear here.</p>}</aside></div>;
+}
+
+function cadenceStatusLabel(status: CadenceVersion['status']) {
+  return status === 'draft' ? 'In progress' : status === 'archived' ? 'Previous' : humanize(status);
+}
+
+function CadenceStepsTable({ steps }: { steps: CadenceStep[] }) {
+  return <DataTable heads={['Step','Day','Action','Channel','Status']}>{steps.map((step,index)=><tr key={step.id ?? index}><td><span className="step-number">{index+1}</span></td><td>Day {step.day_offset}</td><td><strong>{step.description}</strong>{step.channel === 'sms' && <small className="step-copy">{step.sms_body}</small>}</td><td>{step.channel === 'call' ? 'Phone call' : 'Text message'}</td><td><StatusText status={step.is_active ? 'Active' : 'Disabled'} /></td></tr>)}</DataTable>;
+}
+
+function CadenceEditor({ version, templates, action, local, onChanged }: { version: CadenceVersion; templates: Array<Record<string, unknown>>; action: DashboardAction; local: boolean; onChanged: (activated: boolean) => void }) {
+  const [name, setName] = useState(version.name);
+  const [steps, setSteps] = useState<CadenceStep[]>(version.steps);
+  const [selectedStep, setSelectedStep] = useState(0);
+  const [saving, setSaving] = useState(false);
+  const step = steps[selectedStep];
+  const savedTemplates = templates.filter((template) => Boolean(template.deletable) && Boolean(template.is_active) && String(template.body ?? '').trim());
+  const valid = Boolean(name.trim()) && steps.some((step) => step.is_active) && steps.every((step) => step.description.trim() && (step.channel !== 'sms' || step.sms_body?.trim()));
+  function update(index: number, change: Partial<CadenceStep>) { setSteps((current) => current.map((step,position) => position === index ? { ...step, ...change } : step)); }
+  function move(index: number, offset: number) { setSteps((current) => { const target=index+offset;if(target<0||target>=current.length)return current;const next=[...current];[next[index],next[target]]=[next[target],next[index]];return next; }); setSelectedStep((current) => current + offset); }
+  function addStep() { setSteps((current) => [...current, { step_order: current.length, day_offset: current.at(-1)?.day_offset ?? 0, channel: 'call', description: 'New outreach action', is_active: true, sms_body: null }]); setSelectedStep(steps.length); }
+  function deleteStep() { if (steps.length === 1) return; setSteps((current) => current.filter((_, position) => position !== selectedStep)); setSelectedStep((current) => Math.max(0, Math.min(current, steps.length - 2))); }
+  async function save(activate: boolean) {
+    if (!valid || saving) return;
+    if (activate && !window.confirm(local ? 'Use this personalized plan for this patient and replace only their future planned steps?' : 'Activate this global version and replan future work for active and paused leads without personalized patient plans?')) return;
+    setSaving(true);
+    try {
+      const saved = await action(`cadence-versions/${version.id}`, 'PUT', { name: name.trim(), steps: steps.map((step) => ({ day_offset: step.day_offset, channel: step.channel, description: step.description.trim(), is_active: step.is_active, sms_body: step.channel === 'sms' ? step.sms_body : null })) });
+      if (saved && (!activate || await action(`cadence-versions/${version.id}/activate`, 'POST'))) onChanged(activate);
+    } finally { setSaving(false); }
+  }
+  return <Panel title={local ? 'Personalized plan editor' : 'Draft cadence editor'}><div className="cadence-editor">
+    <label className="field-label">{local ? 'Plan name' : 'Version name'}<input value={name} maxLength={120} onChange={(event) => setName(event.target.value)} /></label>
+    <div className="plan-builder"><aside className="plan-step-nav"><header><div><strong>Plan steps</strong><small>Select a step to edit</small></div><span>{steps.length}</span></header><div>{steps.map((item,index)=><button type="button" className={index===selectedStep?'selected':''} aria-pressed={index===selectedStep} onClick={()=>setSelectedStep(index)} key={item.id ?? index}><span>{index+1}</span><div><strong>{item.description || `Step ${index+1}`}</strong><small>Day {item.day_offset} · {item.channel==='call'?'Phone call':'Text message'}{item.is_active?'':' · Disabled'}</small></div></button>)}</div><button className="secondary full" type="button" onClick={addStep}>+ Add step</button></aside>
+      {step && <fieldset className="plan-step-detail"><legend className="sr-only">Edit step {selectedStep+1}</legend><header><div><span>Step {selectedStep+1}</span><h3>{step.description || 'Untitled step'}</h3></div><label className="enabled-check"><input type="checkbox" checked={step.is_active} onChange={(event)=>update(selectedStep,{is_active:event.target.checked})} />Enabled</label></header>
+        <div className="step-fields"><label>Day<input type="number" min="0" max="365" value={step.day_offset} onChange={(event)=>update(selectedStep,{day_offset:Number(event.target.value)})} /></label><div className="step-select-field"><span>Channel</span><SelectMenu ariaLabel={`Channel for step ${selectedStep + 1}`} value={step.channel} onChange={(value)=>update(selectedStep,{channel:value as 'call'|'sms',sms_body:value==='sms'?(step.sms_body??''):null})} options={[{ value: 'call', label: 'Phone call' }, { value: 'sms', label: 'Text message' }]} /></div><label className="step-action">Step description<input value={step.description} maxLength={300} onChange={(event)=>update(selectedStep,{description:event.target.value})} /></label>
+          {step.channel==='sms'&&<div className="step-message"><div className="step-message-toolbar"><label htmlFor={`step-message-${version.id}-${selectedStep}`}>Text message</label>{savedTemplates.length ? <SelectMenu className="template-import" ariaLabel={`Import a saved template into step ${selectedStep + 1}`} value="" onChange={(value)=>{const template=savedTemplates.find((item)=>String(item.id)===value);if(template)update(selectedStep,{sms_body:String(template.body)});}} options={[{value:'',label:'Import saved template'},...savedTemplates.map((template)=>({value:String(template.id),label:smsTemplateName(template)}))]} /> : <small>No saved templates available</small>}</div><textarea id={`step-message-${version.id}-${selectedStep}`} value={step.sms_body??''} maxLength={1600} onChange={(event)=>update(selectedStep,{sms_body:event.target.value})} /></div>}
+        </div><footer><div className="step-reorder"><button type="button" className="icon-button" disabled={selectedStep===0||steps[selectedStep-1]?.day_offset!==step.day_offset} onClick={()=>move(selectedStep,-1)}><ArrowIcon direction="up" />Move earlier</button><button type="button" className="icon-button" disabled={selectedStep===steps.length-1||steps[selectedStep+1]?.day_offset!==step.day_offset} onClick={()=>move(selectedStep,1)}><ArrowIcon direction="down" />Move later</button></div><button type="button" className="icon-button danger" disabled={steps.length===1} onClick={deleteStep}>Delete step</button></footer></fieldset>}
+    </div><div className="editor-actions"><button className="secondary" type="button" disabled={!valid||saving} onClick={()=>save(false)}>{saving?'Saving…':local?'Save for later':'Save draft'}</button><button className="primary" type="button" disabled={!valid||saving} onClick={()=>save(true)}>{saving?'Saving…':local?'Save and use plan':'Activate version'}</button></div>
+  </div></Panel>;
+}
+
+function TemplateStudio({ snapshot, action, onPublished }: { snapshot: Snapshot; action: DashboardAction; onPublished: (id: string, body: string, name: string) => void }) {
+  const templates = snapshot.templates;
+  const [selectedId, setSelectedId] = useState(String(snapshot.templates[0]?.id ?? ''));
+  const [draftBodies, setDraftBodies] = useState<Record<string, string>>({});
+  const [draftNames, setDraftNames] = useState<Record<string, string>>({});
   const [publishing, setPublishing] = useState(false);
-  const selected = snapshot.templates.find((item) => String(item.id) === selectedId) ?? snapshot.templates[0];
+  const [adding, setAdding] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const selected = templates.find((item) => String(item.id) === selectedId) ?? templates[0];
   const id = String(selected?.id ?? '');
   const original = String(selected?.body ?? '');
-  const body = drafts[id] ?? original;
-  const dirty = Object.hasOwn(drafts, id) && body !== original;
-  function discard() { setDrafts((current) => { const next = { ...current }; delete next[id]; return next; }); }
+  const originalName = smsTemplateName(selected);
+  const body = draftBodies[id] ?? original;
+  const name = draftNames[id] ?? originalName;
+  const dirty = body !== original || name.trim() !== originalName;
+  function discard() {
+    setDraftBodies((current) => { const next = { ...current }; delete next[id]; return next; });
+    setDraftNames((current) => { const next = { ...current }; delete next[id]; return next; });
+  }
   async function publish() {
-    if (!selected || !dirty || publishing) return;
+    if (!selected || !dirty || publishing || !name.trim() || !body.trim()) return;
     setPublishing(true);
     try {
-      if (await action(`message-templates/${selected.id}`,'PATCH',{body})) {
-        onPublished(id, body);
-        setDrafts((current) => { const next = { ...current }; delete next[id]; return next; });
+      const updated = await action(`message-templates/${selected.id}`,'PATCH',{name:name.trim(),body});
+      if (updated) {
+        onPublished(id, body, name.trim());
+        discard();
       }
     } finally { setPublishing(false); }
   }
-  return <><PageTitle title="SMS Template Studio" subtitle="Versioned global messages for new-lead outreach." tools={<><button className="secondary" type="button" disabled={!dirty || publishing} onClick={discard}>Discard changes</button><button className="primary" type="button" disabled={!dirty || publishing || !body.trim()} onClick={publish}>{publishing ? 'Publishing…' : 'Publish changes'}</button></>} /><Alert>Publishing updates global defaults. Patient-specific message overrides remain unchanged.</Alert>
-    <div className="template-layout"><Panel title="Templates">{snapshot.templates.map((item) => <button className={`template-item ${selected?.id === item.id ? 'selected' : ''}`} key={String(item.id)} onClick={() => setSelectedId(String(item.id))}><span>●</span><strong>Day {String(item.day_offset)} SMS</strong><StatusText status="Enabled" /></button>)}</Panel><Panel title={selected ? `Day ${selected.day_offset} SMS` : 'SMS template'}><label className="field-label">Message body<textarea value={body} onChange={(event)=>setDrafts((current)=>({...current,[String(selected?.id)]:event.target.value}))} maxLength={1600} /></label><div className="editor-footer"><StatusText status={body.length ? 'Ready to publish' : 'Needs content'} /><span>{body.length} / 1600</span></div></Panel><div className="stack"><Panel title="Preview"><div className="phone-preview"><small>Template preview</small><p>{body.replace('{{first_name}}','Patient').replace('{{location}}','Preferred location')}</p></div></Panel><Panel title="Template settings"><dl className="detail-list"><div><dt>Channel</dt><dd>Twilio SMS</dd></div><div><dt>Send window</dt><dd>Business hours</dd></div><div><dt>Status</dt><dd><StatusText status="Enabled" /></dd></div></dl></Panel></div></div></>;
+  async function createTemplate(templateName: string, templateBody: string) {
+    const created = await action('message-templates', 'POST', { name: templateName, body: templateBody });
+    if (!created?.id) return false;
+    setSelectedId(String(created.id));
+    setAdding(false);
+    return true;
+  }
+  async function deleteTemplate() {
+    if (!selected || !Boolean(selected.deletable) || deleting) return;
+    if (!window.confirm(`Permanently delete ${originalName}?\n\nThis saved template cannot be recovered.`)) return;
+    setDeleting(true);
+    try {
+      const removed = await action(`message-templates/${selected.id}`, 'DELETE');
+      if (removed?.status === 'permanently_deleted') setSelectedId(String(templates.find((item) => item.id !== selected.id)?.id ?? ''));
+    } finally { setDeleting(false); }
+  }
+  return <><PageTitle title="SMS Template Studio" subtitle="Manage reusable message copy for patient outreach." tools={<><button className="secondary" type="button" disabled={!dirty || publishing} onClick={discard}>Discard changes</button><button className="primary" type="button" disabled={!dirty || publishing || !body.trim() || !name.trim()} onClick={publish}>{publishing ? 'Publishing…' : 'Publish changes'}</button></>} /><Alert>Cadence messages power scheduled outreach. Saved templates are reusable message copy and can be permanently removed.</Alert>
+    <div className="template-layout"><Panel title="Templates"><div className="template-list-actions"><p>{templates.length} saved message{templates.length === 1 ? '' : 's'}</p><button className="secondary" type="button" onClick={() => setAdding(true)}>+ Add template</button></div>{templates.length ? templates.map((item) => <button className={`template-item ${selected?.id === item.id ? 'selected' : ''}`} key={String(item.id)} onClick={() => setSelectedId(String(item.id))}><span aria-hidden="true">✉</span><div><strong>{smsTemplateName(item)}</strong><small>{item.cadence_step_id ? 'Cadence message' : 'Saved template'}</small></div><StatusText status="Enabled" /></button>) : <Empty title="No templates" body="Add a reusable SMS template to get started." />}</Panel><Panel title={selected ? name || 'Untitled template' : 'SMS template'}>{selected ? <><label className="field-label">Template name<input value={name} maxLength={120} onChange={(event)=>setDraftNames((current)=>({...current,[id]:event.target.value}))} /></label><label className="field-label template-body-field">Message body<textarea value={body} onChange={(event)=>setDraftBodies((current)=>({...current,[id]:event.target.value}))} maxLength={1600} /></label><div className="editor-footer"><StatusText status={body.trim() && name.trim() ? 'Ready to publish' : 'Needs content'} /><span>{body.length} / 1600</span></div></> : <Empty title="Choose a template" body="Select a message from the template list." />}</Panel><div className="stack"><Panel title="Preview"><div className="phone-preview"><small>Template preview</small><p>{body.replace('{{first_name}}','Patient').replace('{{location}}','Preferred location')}</p></div></Panel><Panel title="Template settings"><dl className="detail-list"><div><dt>Channel</dt><dd>Text message</dd></div><div><dt>Type</dt><dd>{selected?.cadence_step_id ? 'Cadence message' : 'Saved template'}</dd></div><div><dt>Status</dt><dd><StatusText status="Enabled" /></dd></div></dl>{selected && <><button className="danger-button full" type="button" disabled={!Boolean(selected.deletable) || deleting} onClick={deleteTemplate}>{deleting ? 'Deleting…' : 'Permanently delete'}</button>{!Boolean(selected.deletable) && <p className="control-note">Cadence messages stay protected here. Remove their step from a cadence draft instead.</p>}</>}</Panel></div></div>{adding && <NewTemplateDialog onClose={() => setAdding(false)} onCreate={createTemplate} />}</>;
+}
+
+function smsTemplateName(template: Record<string, unknown> | undefined) {
+  if (!template) return '';
+  const value = String(template.name ?? template.key ?? 'SMS template').replaceAll('_', ' ');
+  return value.replace(/^day\s*(\d+)\s+sms$/i, 'Day $1 SMS').replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function NewTemplateDialog({ onClose, onCreate }: { onClose: () => void; onCreate: (name: string, body: string) => Promise<boolean> }) {
+  const [name, setName] = useState('');
+  const [body, setBody] = useState('');
+  const [saving, setSaving] = useState(false);
+  async function submit(event: FormEvent) { event.preventDefault(); if (!name.trim() || !body.trim() || saving) return; setSaving(true); if (!await onCreate(name.trim(), body.trim())) setSaving(false); }
+  return <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><section className="modal template-dialog" role="dialog" aria-modal="true" aria-labelledby="new-template-title"><header><div><h2 id="new-template-title">Add SMS template</h2><p>Create reusable message copy for the outreach team.</p></div><button className="close-button" type="button" onClick={onClose} aria-label="Close template dialog">×</button></header><form onSubmit={submit}><label className="field-label">Template name<input autoFocus value={name} maxLength={120} onChange={(event) => setName(event.target.value)} /></label><label className="field-label">Message body<textarea value={body} maxLength={1600} onChange={(event) => setBody(event.target.value)} /></label><footer><button className="secondary" type="button" onClick={onClose}>Cancel</button><button className="primary" type="submit" disabled={saving || !name.trim() || !body.trim()}>{saving ? 'Adding…' : 'Add template'}</button></footer></form></section></div>;
 }
 
 function LeadFrame({ detail, tab, action, children }: { detail: LeadDetail; tab: string; action: DashboardAction; children: ReactNode }) {
@@ -491,7 +834,7 @@ function LeadFrame({ detail, tab, action, children }: { detail: LeadDetail; tab:
   const cadencePaused = lead.cadence_state === 'paused';
   const cadenceOver = stage === 'closed' || stage === 'booked';
   async function toggleCadence(){ setBusy(true); try { await action(`leads/${id}/cadence`,'POST',{action: cadencePaused ? 'resume':'pause'}); } finally {setBusy(false);} }
-  return <><div className="breadcrumbs"><Link href="/leads">Lead Pipeline</Link><span>/</span><span>{String(lead.display_id)}</span><span>/</span><strong>{lead.full_name}</strong></div><section className="lead-header"><div className="lead-avatar">{initials(lead.full_name)}</div><div className="lead-identity"><h1>{lead.full_name}</h1><span>☎ {phone}</span></div><StatusBadge stage={stage} paused={cadencePaused} />{total > 0 && !cadenceOver && <span className="version">Standard v3 · {progress} of {total}</span>}<span className="location">⌖ {String(lead.location ?? 'Not assigned')}</span><div className="record-actions">{!cadenceOver && <button className="secondary icon-label" disabled={busy} onClick={toggleCadence} title={cadencePaused ? 'Resume cadence' : 'Pause cadence'}>{cadencePaused ? <PlayIcon /> : <PauseIcon />}{cadencePaused ? 'Resume cadence':'Pause cadence'}</button>}<Link className="primary" href={`/leads/${id}/conversations/sms`}>○ Send SMS</Link></div></section><nav className="record-tabs">{[['overview','Overview',`/leads/${id}`],['conversations','Conversations',`/leads/${id}/conversations/sms`],['cadence','Cadence',`/leads/${id}/cadence`],['appointments','Appointments',`/leads/${id}/appointments`],['history','History',`/leads/${id}/history`]].map(([key,label,href])=><Link className={tab===key?'active':''} href={href} key={key}>{label}</Link>)}</nav>{children}</>;
+  return <><div className="breadcrumbs"><Link href="/leads">Lead Pipeline</Link><span>/</span><span>{String(lead.display_id)}</span><span>/</span><strong>{lead.full_name}</strong></div><section className="lead-header"><div className="lead-avatar">{initials(lead.full_name)}</div><div className="lead-identity"><h1>{lead.full_name}</h1><span>☎ {phone}</span></div><StatusBadge stage={stage} paused={cadencePaused} />{total > 0 && !cadenceOver && <span className="version">{String(lead.cadence_version_name ?? detail.cadence_version?.name ?? 'Cadence')} · {progress} of {total}</span>}<span className="location"><MapPinIcon />{String(lead.location ?? 'Not assigned')}</span><div className="record-actions">{!cadenceOver && <button className="secondary icon-label" disabled={busy} onClick={toggleCadence} title={cadencePaused ? 'Resume cadence' : 'Pause cadence'}>{cadencePaused ? <PlayIcon /> : <PauseIcon />}{cadencePaused ? 'Resume cadence':'Pause cadence'}</button>}<Link className="primary icon-label" href={`/leads/${id}/conversations/sms`}><EnvelopeIcon />Send SMS</Link></div></section><nav className="record-tabs">{[['overview','Overview',`/leads/${id}`],['conversations','Conversations',`/leads/${id}/conversations/sms`],['cadence','Cadence',`/leads/${id}/cadence`],['appointments','Appointments',`/leads/${id}/appointments`],['history','History',`/leads/${id}/history`]].map(([key,label,href])=><Link className={tab===key?'active':''} href={href} key={key}>{label}</Link>)}</nav>{children}</>;
 }
 
 function LeadOverview({ detail }: { detail: LeadDetail }) {
@@ -527,7 +870,7 @@ function splitCadenceRuns(events: Array<Record<string, unknown>>) {
   const batches = new Map<string, Array<Record<string, unknown>>>();
   const order: string[] = [];
   for (const event of events) {
-    const key = String(event.created_at ?? '');
+    const key = String(event.cadence_version_id ?? event.created_at ?? '');
     if (!batches.has(key)) { batches.set(key, []); order.push(key); }
     batches.get(key)!.push(event);
   }
@@ -552,13 +895,79 @@ function splitCadenceRuns(events: Array<Record<string, unknown>>) {
   return runs;
 }
 
-function LeadCadencePage({ detail, action }: { detail: LeadDetail; action: DashboardAction }) {
+function CadenceChannelIcon({ channel }: { channel: string }) {
+  return <svg viewBox="0 0 20 20" width="15" height="15" fill="none" stroke="currentColor"
+    strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    {channel === 'call'
+      ? <path d="M5.3 3.3 7.6 3l1.2 3.4-1.5 1.2a11 11 0 0 0 5.1 5.1l1.2-1.5 3.4 1.2-.3 2.3a2.2 2.2 0 0 1-2.2 1.9C8.4 16.6 3.4 11.6 3.4 5.5a2.2 2.2 0 0 1 1.9-2.2Z" />
+      : <path d="M3.2 4.2h13.6v9.4H8l-3.7 2.2v-2.2H3.2V4.2Z" />}
+  </svg>;
+}
+
+function CadenceStateIcon({ tone }: { tone: string }) {
+  return <svg viewBox="0 0 20 20" width="15" height="15" fill="none" stroke="currentColor"
+    strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    {tone === 'warning'
+      ? <><path d="M10 2.8 18 17H2L10 2.8Z" /><path d="M10 7v4.5M10 14.4h.01" /></>
+      : <><circle cx="10" cy="10" r="7.2" />{tone === 'complete' ? <path d="m6.8 10 2 2 4.4-4.5" /> : tone === 'planned' ? <path d="M10 6.3V10l2.5 1.6" /> : tone === 'progress' ? <path d="M10 6v4l3 2" /> : <path d="M7.4 10h5.2" />}</>}
+  </svg>;
+}
+
+function CadenceEventTable({ events, currentIndex = -1, onReschedule }: {
+  events: Array<Record<string, unknown>>;
+  currentIndex?: number;
+  onReschedule?: (event: Record<string, unknown>) => void;
+}) {
+  return <div className="cadence-event-table"><table><thead><tr><th>Step</th><th>Channel</th><th>Status</th><th>Scheduled / Completed</th><th>Outcome</th></tr></thead><tbody>
+    {events.map((event, index) => {
+      const status = String(event.status);
+      const rejected = event.delivery_status === 'undelivered' || event.delivery_status === 'failed';
+      const completed = status === 'delivered' && !rejected;
+      const skipped = status === 'skipped';
+      const pending = status === 'attempted' || status === 'in_flight';
+      const issue = status === 'failed' || status === 'unknown' || rejected;
+      const tone = completed ? 'complete' : issue ? 'warning' : pending ? 'progress' : skipped ? 'muted' : 'planned';
+      const statusLabel = completed ? 'Completed' : issue ? 'Needs review' : pending ? 'In progress' : skipped ? 'Not sent' : 'Planned';
+      const outcome = rejected
+        ? event.failure_reason ? `Not delivered · ${String(event.failure_reason)}` : 'Not delivered'
+        : skipped ? 'Outreach ended'
+        : pending ? 'Awaiting provider result'
+        : completed ? humanize(String(event.outcome ?? event.delivery_status ?? 'Completed'))
+        : issue ? humanize(String(event.outcome ?? event.failure_reason ?? 'Needs review'))
+        : '—';
+      const current = index === currentIndex;
+      return <tr className={current ? 'current' : ''} key={String(event.id)}>
+        <td><span className="cadence-step-cell"><span className="cadence-step-index">{index + 1}</span><span>{event.day_offset === null || event.day_offset === undefined ? 'Callback' : `Day ${String(event.day_offset)}`}</span></span></td>
+        <td><span className="cadence-channel"><CadenceChannelIcon channel={String(event.channel)} />{String(event.channel).toUpperCase()}</span></td>
+        <td><span className={`cadence-event-status ${tone}`}><CadenceStateIcon tone={tone} />{statusLabel}</span></td>
+        <td><span className="cadence-event-time">{date(String(event.executed_at ?? event.scheduled_for ?? ''))}</span>{current && onReschedule && <button className="cadence-reschedule" type="button" onClick={() => onReschedule(event)}>Reschedule</button>}</td>
+        <td className="cadence-outcome">{outcome}</td>
+      </tr>;
+    })}
+  </tbody></table></div>;
+}
+
+function LeadCadencePage({ detail, action, templates }: { detail: LeadDetail; action: DashboardAction; templates: Array<Record<string, unknown>> }) {
   const runs = splitCadenceRuns(detail.events);
   const activeRun = runs[runs.length - 1] ?? [];
   const earlierRuns = runs.slice(0, -1);
   const [showEarlier, setShowEarlier] = useState(false);
   const currentIndex = activeRun.findIndex((event) => event.status === 'planned');
-  return <div className="two-col wide-left"><Panel title={`${String(detail.lead.full_name)}’s cadence`}><p className="panel-subtitle">{runs.length > 1 ? `Current outreach · restart ${runs.length} of ${runs.length}` : 'Live database schedule · based on Standard v3'}</p>{earlierRuns.length > 0 && <div className="run-notice"><span>{earlierRuns.reduce((sum,run)=>sum+run.length,0)} step(s) from earlier outreach are kept for the record.</span><button className="text-action" type="button" onClick={()=>setShowEarlier((value)=>!value)}>{showEarlier ? 'Hide earlier outreach' : 'Show earlier outreach'}</button></div>}{showEarlier && earlierRuns.map((run,runIndex)=><div className="cadence-timeline earlier" key={`run-${runIndex}`}><p className="run-label">Earlier outreach {runIndex + 1}</p>{run.map((event)=><div className="completed" key={String(event.id)}><span>✓</span><b>{String(event.channel)==='call'?'☎':'●'}</b><strong>{event.day_offset === null || event.day_offset === undefined ? 'Callback requested' : `Day ${String(event.day_offset)} ${String(event.channel).toUpperCase()}`}</strong><small>{String(event.status)==='skipped'?'Not sent':event.delivery_status==='undelivered'||event.delivery_status==='failed'?'Not delivered':'Completed'}</small></div>)}</div>)}<div className="cadence-timeline">{activeRun.map((event,index)=>{const status=String(event.status);/* Twilio can reject a text after accepting it (carrier code 30034 = unregistered sender), so an SMS step counts as complete only once the carrier confirms it. */const rejected=event.delivery_status==='undelivered'||event.delivery_status==='failed';const completed=status==='delivered'&&!rejected;const skipped=status==='skipped';const pending=status==='attempted'||status==='in_flight';const issue=status==='failed'||status==='unknown'||rejected;const current=index===currentIndex;const statusLabel=completed?'Completed':skipped?'Not sent · outreach ended':pending?'Awaiting provider result':rejected?`Not delivered${event.failure_reason?` · carrier code ${String(event.failure_reason)}`:''}`:issue?'Needs review':current?`Due ${date(String(event.scheduled_for))}`:'Upcoming';return <div className={`${completed?'completed':''} ${skipped?'skipped':''} ${current?'current':''} ${issue?'issue':''}`} key={String(event.id)}><span>{completed?'✓':skipped?'–':index+1}</span><b>{String(event.channel)==='call'?'☎':'●'}</b><strong>{event.day_offset === null || event.day_offset === undefined ? 'Callback requested' : `Day ${String(event.day_offset)} ${String(event.channel).toUpperCase()}`}</strong><small>{statusLabel}</small>{current && <button className="icon-button" onClick={()=>{const value=window.prompt('New ISO date/time',String(event.scheduled_for));if(value)action(`leads/${detail.lead.id}/outreach-events/${event.id}`,'PATCH',{scheduled_for:value});}}>Edit</button>}</div>})}</div></Panel><div className="stack"><Panel title="Patient-specific controls"><p className="panel-subtitle">Overrides affect {String(detail.lead.full_name)} only.</p><dl className="detail-list"><div><dt>Assigned cadence</dt><dd>Standard v3</dd></div><div><dt>Time zone</dt><dd>{String(detail.lead.timezone ?? 'Not recorded')}</dd></div><div><dt>Preferred location</dt><dd>{String(detail.lead.location ?? 'Not assigned')}</dd></div><div><dt>Next send window</dt><dd>Business hours</dd></div></dl><button className="secondary full">Create local override</button></Panel><Panel title="Contact rules"><Toggle label="Do not contact" enabled={String(detail.lead.status)==='do_not_contact'} /><Toggle label="Call opt-out" enabled={Boolean(detail.lead.call_opt_out)} /><p className="muted">Do not contact blocks calls and SMS and cannot be bypassed.</p></Panel></div></div>;
+
+  function reschedule(event: Record<string, unknown>) {
+    const value = window.prompt('New ISO date/time', String(event.scheduled_for));
+    if (value) action(`leads/${detail.lead.id}/outreach-events/${event.id}`, 'PATCH', { scheduled_for: value });
+  }
+
+  return <div className="two-col wide-left cadence-page">
+    <Panel title={`${String(detail.lead.full_name)}’s cadence`}>
+      <p className="panel-subtitle">{runs.length > 1 ? `Current outreach · restart ${runs.length} of ${runs.length}` : `Live database schedule · based on ${detail.cadence_version?.name ?? 'active cadence'}`}</p>
+      {earlierRuns.length > 0 && <div className="run-notice"><span>{earlierRuns.reduce((sum, run) => sum + run.length, 0)} step(s) from earlier outreach are kept for the record.</span><button className="text-action" type="button" onClick={() => setShowEarlier((value) => !value)}>{showEarlier ? 'Hide earlier outreach' : 'Show earlier outreach'}</button></div>}
+      {showEarlier && earlierRuns.map((run, runIndex) => <section className="cadence-run-archive" key={`run-${runIndex}`}><p className="run-label">Earlier outreach {runIndex + 1}</p><CadenceEventTable events={run} /></section>)}
+      <CadenceEventTable events={activeRun} currentIndex={currentIndex} onReschedule={reschedule} />
+    </Panel>
+    <div className="stack"><Panel title="Personalized outreach"><p className="panel-subtitle">Changes here apply only to {String(detail.lead.full_name)}.</p><dl className="detail-list"><div><dt>Current outreach plan</dt><dd>{detail.cadence_version?.name ?? 'Standard outreach plan'}</dd></div><div><dt>Time zone</dt><dd>{String(detail.lead.timezone ?? 'Not recorded')}</dd></div><div><dt>Preferred location</dt><dd>{String(detail.lead.location ?? 'Not assigned')}</dd></div><div><dt>Next send window</dt><dd>Business hours</dd></div></dl><CadenceStudio action={action} templates={templates} leadId={String(detail.lead.id)} /></Panel><Panel title="Contact rules"><Toggle label="Do not contact" enabled={String(detail.lead.status) === 'do_not_contact'} /><Toggle label="Call opt-out" enabled={Boolean(detail.lead.call_opt_out)} /><p className="muted">Do not contact blocks calls and SMS and cannot be bypassed.</p></Panel></div>
+  </div>;
 }
 
 function LeadAppointmentsPage({ detail }: { detail: LeadDetail }) {
@@ -573,7 +982,7 @@ function LeadHistoryPage({ detail }: { detail: LeadDetail }) {
 }
 
 function ConversationTabs({ id, active }: { id:string; active:'sms'|'calls' }) { return <nav className="conversation-tabs"><Link className={active==='sms'?'active':''} href={`/leads/${id}/conversations/sms`}>● SMS</Link><Link className={active==='calls'?'active':''} href={`/leads/${id}/conversations/calls`}>▤ Call transcripts</Link></nav>; }
-function LeadCard({ lead, onOpen, dragging = false, onDragStart, onDragEnd }: { lead: Lead; onOpen:()=>void; dragging?: boolean; onDragStart?: ()=>void; onDragEnd?: ()=>void }) { const meta=statusMeta[lead.stage]; return <button className={`lead-card ${dragging ? 'is-dragging' : ''}`} type="button" draggable={Boolean(onDragStart)} onDragStart={onDragStart} onDragEnd={onDragEnd} onClick={onOpen}><strong>{lead.full_name}</strong><span className="location">⌖ {lead.location ?? 'Not assigned'}</span><StatusBadge stage={lead.stage} paused={lead.cadence_state === 'paused'} />{lead.stage==='cadence'&&lead.cadence_state!=='paused'&&<span className="version">Standard v3 · {lead.cadence_progress ?? 0} of {lead.cadence_total ?? 0}</span>}<span className="next">{lead.stage === 'closed' || lead.stage === 'booked' ? 'Outcome' : 'Next'}: {lead.next_step ?? 'No planned action'}</span><span className="sr-only">{meta.label}</span></button>; }
+function LeadCard({ lead, onOpen, dragging = false, onDragStart, onDragEnd }: { lead: Lead; onOpen:()=>void; dragging?: boolean; onDragStart?: ()=>void; onDragEnd?: ()=>void }) { const meta=statusMeta[lead.stage]; return <button className={`lead-card ${dragging ? 'is-dragging' : ''}`} type="button" draggable={Boolean(onDragStart)} onDragStart={onDragStart} onDragEnd={onDragEnd} onClick={onOpen}><strong>{lead.full_name}</strong><span className="location"><MapPinIcon />{lead.location ?? 'Not assigned'}</span><StatusBadge stage={lead.stage} paused={lead.cadence_state === 'paused'} />{lead.stage==='cadence'&&lead.cadence_state!=='paused'&&<span className="version">{lead.cadence_version_name ?? 'Cadence'} · {lead.cadence_progress ?? 0} of {lead.cadence_total ?? 0}</span>}<span className="next">{lead.stage === 'closed' || lead.stage === 'booked' ? 'Outcome' : 'Next'}: {lead.next_step ?? 'No planned action'}</span><span className="sr-only">{meta.label}</span></button>; }
 function StatusTiles({ counts, loading = false }: { counts: Record<LeadStage,number>; loading?: boolean }) { return <section className="status-tiles" aria-busy={loading}>{(['new','cadence','attention','booked','closed'] as LeadStage[]).map((stage)=><Link className={stage} href={`/leads?stage=${stage}`} key={stage}><StatusGlyph stage={stage} size="large" /><div><small>{statusMeta[stage].label}</small><strong>{loading ? "—" : counts[stage]}</strong></div></Link>)}</section>; }
 function StatusBadge({ stage, paused = false }: { stage: LeadStage; paused?: boolean }) {
   if (paused) return <span className="status-pill paused"><PauseIcon />Paused</span>;
@@ -635,6 +1044,9 @@ function filterSnapshot(snapshot: Snapshot, location: string): Snapshot {
 function AddLeadDialog({ defaultLocation, onAdd, onClose }: { defaultLocation: string; onAdd: (lead: LeadCreateInput) => Promise<boolean>; onClose: () => void }) {
   const [saving, setSaving] = useState(false);
   const [phoneError, setPhoneError] = useState('');
+  const [leadType, setLeadType] = useState('Physical Therapy');
+  const [leadLocation, setLeadLocation] = useState(defaultLocation);
+  const [leadOwner, setLeadOwner] = useState(owners[0]);
   const [idempotencyKey] = useState(() => crypto.randomUUID());
   useEffect(() => {
     function closeOnEscape(event: KeyboardEvent) { if (event.key === 'Escape') onClose(); }
@@ -669,5 +1081,5 @@ function AddLeadDialog({ defaultLocation, onAdd, onClose }: { defaultLocation: s
     });
     setSaving(false);
   }
-  return <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><section className="modal" role="dialog" aria-modal="true" aria-labelledby="add-lead-title"><header><div><h2 id="add-lead-title">Add lead</h2><p>Save a lead and schedule their outreach cadence.</p></div><button className="close-button" type="button" onClick={onClose} aria-label="Close add lead dialog">×</button></header><form onSubmit={submit}><div className="form-grid"><label>First name<input name="first_name" autoComplete="given-name" autoFocus required /></label><label>Last name<input name="last_name" autoComplete="family-name" required /></label><label>Phone<span className="phone-field"><i aria-hidden="true">+1</i><input name="phone" type="tel" inputMode="tel" autoComplete="tel" placeholder="949 555 0123" maxLength={18} aria-invalid={Boolean(phoneError)} required /></span>{phoneError && <small className="field-error">{phoneError}</small>}</label><label>Email<input name="email" type="email" autoComplete="email" placeholder="name@example.com" /></label><label>Date of birth<input name="date_of_birth" type="date" autoComplete="bday" required /></label><label>Who referred this lead?<input name="referred_by" placeholder="Name or organization" /></label><label className="form-field-full">Lead type<select name="lead_type" defaultValue="Physical Therapy" required><option>Physical Therapy</option><option>Wellness</option></select></label><label>Location<select name="location" defaultValue={defaultLocation}>{locations.map((location) => <option key={location}>{location}</option>)}</select></label><label>Owner<select name="owner" defaultValue={owners[0]}>{owners.map((owner) => <option key={owner}>{owner}</option>)}</select></label></div><footer><button className="secondary" type="button" onClick={onClose} disabled={saving}>Cancel</button><button className="primary" type="submit" disabled={saving}>{saving ? 'Saving…' : 'Add lead'}</button></footer></form></section></div>;
+  return <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><section className="modal" role="dialog" aria-modal="true" aria-labelledby="add-lead-title"><header><div><h2 id="add-lead-title">Add lead</h2><p>Save a lead and schedule their outreach cadence.</p></div><button className="close-button" type="button" onClick={onClose} aria-label="Close add lead dialog">×</button></header><form onSubmit={submit}><div className="form-grid"><label>First name<input name="first_name" autoComplete="given-name" autoFocus required /></label><label>Last name<input name="last_name" autoComplete="family-name" required /></label><label>Phone<span className="phone-field"><i aria-hidden="true">+1</i><input name="phone" type="tel" inputMode="tel" autoComplete="tel" placeholder="949 555 0123" maxLength={18} aria-invalid={Boolean(phoneError)} required /></span>{phoneError && <small className="field-error">{phoneError}</small>}</label><label>Email<input name="email" type="email" autoComplete="email" placeholder="name@example.com" /></label><label>Date of birth<input name="date_of_birth" type="date" autoComplete="bday" required /></label><label>Who referred this lead?<input name="referred_by" placeholder="Name or organization" /></label><div className="form-select-field form-field-full"><span>Lead type</span><SelectMenu name="lead_type" ariaLabel="Lead type" value={leadType} onChange={setLeadType} options={['Physical Therapy','Wellness'].map((item) => ({ value: item, label: item }))} /></div><div className="form-select-field"><span>Location</span><SelectMenu name="location" ariaLabel="Lead location" value={leadLocation} onChange={setLeadLocation} options={locations.map((item) => ({ value: item, label: item }))} /></div><div className="form-select-field"><span>Owner</span><SelectMenu name="owner" ariaLabel="Lead owner" value={leadOwner} onChange={setLeadOwner} options={owners.map((item) => ({ value: item, label: item }))} /></div></div><footer><button className="secondary" type="button" onClick={onClose} disabled={saving}>Cancel</button><button className="primary" type="submit" disabled={saving}>{saving ? 'Saving…' : 'Add lead'}</button></footer></form></section></div>;
 }
