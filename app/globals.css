@@ -347,7 +347,8 @@ tr.row-booked td:first-child { border-left: 3px solid var(--green); }
 .field-label textarea:focus, .composer textarea:focus { border-color: var(--blue); box-shadow: 0 0 0 3px #0b4ce817; }
 .editor-footer { display: flex; justify-content: space-between; margin-top: 12px; }
 .phone-preview { border: 1px solid var(--line); border-radius: 28px; padding: 22px; min-height: 275px; background: #fafbfc; }
-.phone-preview p { margin-top: 35px; padding: 15px; border-radius: 16px; background: #e9edf3; line-height: 1.5; }
+.phone-preview p { margin-top: 35px; padding: 15px; border-radius: 16px; background: #e9edf3; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+.version-detail-actions { display: grid; gap: 10px; }
 .control-note { margin: 9px 0 0; color: var(--muted); font-size: 12px; line-height: 1.45; }
 .template-dialog { width: min(620px,100%); }
 .template-dialog .field-label + .field-label { margin-top: 16px; }

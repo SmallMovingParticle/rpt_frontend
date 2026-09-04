@@ -561,6 +561,7 @@ function CadenceStudio({ action, templates, leadId, loading = false }: { action:
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [fetching, setFetching] = useState(true);
   const [creating, setCreating] = useState(false);
+  const [activating, setActivating] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [hardDeleting, setHardDeleting] = useState<number | null>(null);
   const [renaming, setRenaming] = useState(false);
@@ -674,6 +675,19 @@ function CadenceStudio({ action, templates, leadId, loading = false }: { action:
     }
   }
 
+  async function activatePreviousVersion() {
+    if (!selected || selected.status !== 'archived' || activating) return;
+    if (!window.confirm(`Activate ${selected.name}? Only future planned work will be replaced.`)) return;
+    setActivating(true);
+    try {
+      if (await action(`cadence-versions/${selected.id}/activate`, 'POST')) {
+        setRefresh((value) => value + 1);
+      }
+    } finally {
+      setActivating(false);
+    }
+  }
+
   async function permanentlyDeleteVersion(version: CadenceVersion) {
     if (version.status !== 'deleted' || hardDeleting !== null) return;
     if (!window.confirm(`Permanently delete ${version.name}?\n\nThis removes its cadence steps and message copy from the database and cannot be undone.`)) return;
@@ -712,7 +726,7 @@ function CadenceStudio({ action, templates, leadId, loading = false }: { action:
     <div className="version-toolbar"><div>{renameValue ? <label className="version-name-editor"><span className="sr-only">Version name</span><input autoFocus value={renameValue} maxLength={120} onChange={(event) => setRenameValue(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') saveName(); if (event.key === 'Escape') setRenameValue(''); }} /></label> : <strong>{selected.name}</strong>}<small>{selected.status === 'deleted' ? 'This complete version is retained and can be reused as a new draft.' : selected.status === 'active' ? 'Activate another version before deleting the current plan.' : 'Deleting keeps the complete version available here.'}</small></div><div className="version-toolbar-actions">{renameValue ? <><button className="secondary" type="button" disabled={renaming || !renameValue.trim()} onClick={saveName}>{renaming ? 'Saving…' : 'Save name'}</button><button className="secondary" type="button" onClick={() => setRenameValue('')}>Cancel</button></> : <button className="secondary" type="button" onClick={() => setRenameValue(selected.name)}>Rename</button>}{selected.status === 'deleted' ? <button className="primary" type="button" disabled={creating} onClick={() => cloneVersion(selected)}>{creating ? 'Creating…' : 'Reuse as new draft'}</button> : <button className="danger-button" type="button" disabled={selected.status === 'active' || deleting} onClick={deleteVersion}>{deleting ? 'Deleting…' : 'Delete version'}</button>}</div></div>
     {selected.status === 'draft'
       ? <CadenceEditor key={`${selected.id}-${selected.name}`} version={selected} templates={templates} action={action} local={false} onChanged={() => setRefresh((value) => value + 1)} />
-      : <div className="two-col wide-left"><Panel title={selected.name}><CadenceStepsTable steps={selected.steps} /></Panel><div className="stack"><Panel title="Version details"><dl className="detail-list"><div><dt>Status</dt><dd><StatusText status={cadenceStatusLabel(selected.status)} /></dd></div><div><dt>Version</dt><dd>v{selected.version_number}</dd></div><div><dt>Scope</dt><dd>Global default</dd></div><div><dt>Steps</dt><dd>{selected.steps.length}</dd></div></dl><button className="primary full" type="button" disabled={creating} onClick={() => cloneVersion(selected)}>{creating ? 'Creating…' : selected.status === 'deleted' ? 'Reuse as new draft' : 'Edit as new draft'}</button></Panel><Panel title="Guardrails"><ul className="check-list"><li>✓ DNC enforced</li><li>✓ Call opt-out enforced</li><li>✓ Business-hour windows</li><li>✓ Audited changes</li></ul></Panel></div></div>}
+      : <div className="two-col wide-left"><Panel title={selected.name}><CadenceStepsTable steps={selected.steps} /></Panel><div className="stack"><Panel title="Version details"><dl className="detail-list"><div><dt>Status</dt><dd><StatusText status={cadenceStatusLabel(selected.status)} /></dd></div><div><dt>Version</dt><dd>v{selected.version_number}</dd></div><div><dt>Scope</dt><dd>Global default</dd></div><div><dt>Steps</dt><dd>{selected.steps.length}</dd></div></dl><div className="version-detail-actions">{selected.status === 'archived' && <button className="primary full" type="button" disabled={activating} onClick={activatePreviousVersion}>{activating ? 'Activating…' : 'Activate this version'}</button>}<button className={selected.status === 'archived' ? 'secondary full' : 'primary full'} type="button" disabled={creating || activating} onClick={() => cloneVersion(selected)}>{creating ? 'Creating…' : selected.status === 'deleted' ? 'Reuse as new draft' : 'Edit as new draft'}</button></div></Panel><Panel title="Guardrails"><ul className="check-list"><li>✓ DNC enforced</li><li>✓ Call opt-out enforced</li><li>✓ Business-hour windows</li><li>✓ Audited changes</li></ul></Panel></div></div>}
   </section><aside className="deleted-versions"><header><div><h2>Deleted versions</h2><p>Review, reuse, or permanently remove</p></div><span>{deleted.length}</span></header>{deleted.length ? <div className="deleted-version-list">{deleted.map((version) => <article className={version.id === selected.id ? 'selected' : ''} key={version.id}><button type="button" className="deleted-version-select" aria-pressed={version.id === selected.id} onClick={() => { setSelectedId(version.id); setRenameValue(''); }}><strong>{version.name}</strong><small>Deleted {version.deleted_at ? date(version.deleted_at) : 'recently'}</small><span>v{version.version_number} · {version.steps.length} steps</span></button><button className="permanent-delete" type="button" disabled={hardDeleting !== null} onClick={() => permanentlyDeleteVersion(version)} aria-label={`Permanently delete ${version.name}`}>{hardDeleting === version.id ? 'Deleting…' : 'Permanently delete'}</button></article>)}</div> : <p className="deleted-empty">Deleted cadence versions will appear here.</p>}</aside></div>;
 }
 
