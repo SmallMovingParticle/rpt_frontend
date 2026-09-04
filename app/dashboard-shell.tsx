@@ -131,11 +131,14 @@ function SelectMenu({ value, options, onChange, ariaLabel, className = '', name,
 }
 
 function toUsE164(raw: string): string | null {
-  // US-only client: staff type ten digits. Accept a pasted +1, a leading 1, and
-  // any punctuation, but never silently truncate a genuine foreign number.
+  // Ten bare digits stay a US number, which is what reception types all day.
+  // An explicit country code is taken as written so the team can test on a
+  // foreign handset; the backend applies the same rule, so the two agree.
   const trimmed = raw.trim();
   const digits = trimmed.replace(/\D/g, '');
-  if (trimmed.startsWith('+') && !trimmed.startsWith('+1')) return null;
+  if (trimmed.startsWith('+')) {
+    return digits.length >= 11 && digits.length <= 15 ? `+${digits}` : null;
+  }
   const local = digits.length === 11 && digits.startsWith('1') ? digits.slice(1) : digits;
   return local.length === 10 ? `+1${local}` : null;
 }
@@ -1060,7 +1063,7 @@ function AddLeadDialog({ defaultLocation, onAdd, onClose }: { defaultLocation: s
     const lastName = String(data.get('last_name') ?? '').trim();
     const normalisedPhone = toUsE164(String(data.get('phone') ?? ''));
     if (!normalisedPhone) {
-      setPhoneError('Enter a 10-digit US number, for example 949 555 0123.');
+      setPhoneError('Enter a 10-digit US number (949 555 0123), or a full international number with its country code (+91 98205 37790).');
       return;
     }
     setPhoneError('');
