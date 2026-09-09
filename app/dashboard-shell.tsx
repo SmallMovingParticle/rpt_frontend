@@ -1137,7 +1137,7 @@ function LeadCadencePage({ detail, action, templates }: { detail: LeadDetail; ac
             </div>)}
           </div>}
     </Panel>
-    <div className="stack"><Panel title="Personalized outreach"><p className="panel-subtitle">Changes here apply only to {String(detail.lead.full_name)}.</p><dl className="detail-list"><div><dt>Current outreach plan</dt><dd>{detail.cadence_version?.name ?? 'Standard outreach plan'}</dd></div><div><dt>Time zone</dt><dd>{String(detail.lead.timezone ?? 'Not recorded')}</dd></div><div><dt>Preferred location</dt><dd>{String(detail.lead.location ?? 'Not assigned')}</dd></div><div><dt>Next send window</dt><dd>Business hours</dd></div></dl><CadenceStudio action={action} templates={templates} leadId={String(detail.lead.id)} /></Panel><Panel title="Contact rules"><Toggle label="Do not contact" enabled={String(detail.lead.status) === 'do_not_contact'} /><Toggle label="Call opt-out" enabled={Boolean(detail.lead.call_opt_out)} /><p className="muted">Do not contact blocks calls and SMS and cannot be bypassed.</p></Panel></div>
+    <div className="stack"><Panel title="Personalized outreach"><p className="panel-subtitle">Changes here apply only to {String(detail.lead.full_name)}.</p><dl className="detail-list"><div><dt>Current outreach plan</dt><dd>{detail.cadence_version?.name ?? 'Standard outreach plan'}</dd></div><div><dt>Time zone</dt><dd>{String(detail.lead.timezone ?? 'Not recorded')}</dd></div><div><dt>Preferred location</dt><dd>{String(detail.lead.location ?? 'Not assigned')}</dd></div><div><dt>Next send window</dt><dd>Business hours</dd></div></dl><CadenceStudio action={action} templates={templates} leadId={String(detail.lead.id)} /></Panel><Panel title="Contact rules"><Toggle label="Do not contact" enabled={String(detail.lead.status) === 'do_not_contact'} hint="Stops outreach immediately" onChange={(next) => action(`leads/${detail.lead.id}/contact-rules`, 'POST', { do_not_contact: next })} /><Toggle label="Call opt-out" enabled={Boolean(detail.lead.call_opt_out)} hint="Texts still send" onChange={(next) => action(`leads/${detail.lead.id}/contact-rules`, 'POST', { call_opt_out: next })} /><Toggle label="Text opt-out" enabled={Boolean(detail.lead.sms_opt_out)} hint="Calls still go out" onChange={(next) => action(`leads/${detail.lead.id}/contact-rules`, 'POST', { sms_opt_out: next })} /><p className="muted">Do not contact blocks calls and texts, cancels the remaining schedule, and cannot be bypassed.</p></Panel></div>
   </div>;
 }
 
@@ -1168,7 +1168,37 @@ function Alert({ children, tone='info' }: { children:ReactNode; tone?:'info'|'wa
 function Empty({ title, body }: { title:string; body:string }) { return <div className="empty"><h2>{title}</h2><p>{body}</p></div>; }
 function Stat({ label,value,trend }: { label:string; value:string; trend?:string }) { return <div className="stat"><small>{label}</small><strong>{value}</strong>{trend&&<span>{trend}</span>}</div>; }
 function Metric({ label,value,width,tone }: { label:string; value:string; width:string; tone?:string }) { return <div className={`metric ${tone??''}`}><div><span>{label}</span><strong>{value}</strong></div><i><b style={{width}} /></i></div>; }
-function Toggle({ label,enabled }: { label:string; enabled:boolean }) { const [on,setOn]=useState(enabled); return <div className="toggle-row"><span>{label}</span><button className={on?'on':''} type="button" aria-label={`Turn ${label} ${on ? 'off' : 'on'}`} aria-pressed={on} onClick={()=>setOn(!on)}><i /></button><b>{on?'ON':'OFF'}</b></div>; }
+function Toggle({ label, enabled, onChange, hint }: {
+  label: string;
+  enabled: boolean;
+  // A switch with no onChange used to flip local state and nothing else, so the
+  // dashboard reported contact as blocked while the worker kept calling. It now
+  // renders read-only unless it is given somewhere to save.
+  onChange?: (next: boolean) => Promise<unknown>;
+  hint?: string;
+}) {
+  const [on, setOn] = useState(enabled);
+  const [saving, setSaving] = useState(false);
+  useEffect(() => { setOn(enabled); }, [enabled]);
+
+  async function toggle() {
+    if (!onChange || saving) return;
+    const next = !on;
+    setOn(next);
+    setSaving(true);
+    // Put it back if the save fails: a switch that stays on after a failed
+    // write is the same lie this replaced.
+    if (!await onChange(next)) setOn(!next);
+    setSaving(false);
+  }
+
+  return <div className="toggle-row">
+    <span>{label}{hint && <small className="toggle-hint">{hint}</small>}</span>
+    <button className={on ? 'on' : ''} type="button" disabled={!onChange || saving}
+      aria-label={`Turn ${label} ${on ? 'off' : 'on'}`} aria-pressed={on} onClick={toggle}><i /></button>
+    <b>{saving ? '…' : on ? 'ON' : 'OFF'}</b>
+  </div>;
+}
 function ActivityList({ detail, items }: { detail:LeadDetail; items?: Array<Record<string,unknown>> }) { const activity=items ?? (detail.history.length?detail.history:[{to_status:'created',reason:'Lead created',source:'System',changed_at:detail.lead.created_at}]); return activity.length ? <div className="activity-list">{activity.map((item,index)=><div key={index}><time>{date(String(item.changed_at))}</time><span>{index===0?'▦':index===1?'☎':index===2?'●':'○'}</span><p><strong>{humanize(String(item.to_status))}</strong><small>{String(item.reason ?? 'Status updated')}</small></p><b>{String(item.source ?? 'System')}</b></div>)}</div> : <Empty title="No matching activity" body="This lead has no activity in the selected category." />; }
 function activityCategory(item: Record<string,unknown>) { const value=`${item.to_status ?? ''} ${item.reason ?? ''} ${item.source ?? ''}`.toLowerCase(); if(/appointment|booked|stride/.test(value))return'appointments';if(/sms|message|twilio/.test(value))return'messages';if(/call|callback|vapi/.test(value))return'calls';return'cadence'; }
 function initials(name:string){return name.split(/\s+/).map((part)=>part[0]).join('').slice(0,2).toUpperCase();}
