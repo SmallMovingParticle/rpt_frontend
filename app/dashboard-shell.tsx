@@ -143,6 +143,16 @@ function toUsE164(raw: string): string | null {
   return local.length === 10 ? `+1${local}` : null;
 }
 
+function TrashIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
+         strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14" />
+      <path d="M10 11v6M14 11v6" />
+    </svg>
+  );
+}
+
 function NavIcon({ name }: { name: string }) {
   return (
     <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor"
@@ -863,7 +873,7 @@ This removes the lead and everything attached to it - cadence schedule, calls, t
     if (await action(`leads/${id}`,'DELETE')) router.push('/leads');
     else setDeleting(false);
   }
-  return <><div className="breadcrumbs"><Link href="/leads">Lead Pipeline</Link><span>/</span><span>{String(lead.display_id)}</span><span>/</span><strong>{lead.full_name}</strong></div><section className="lead-header"><div className="lead-avatar">{initials(lead.full_name)}</div><div className="lead-identity"><h1>{lead.full_name}</h1><span>☎ {phone}</span></div><StatusBadge stage={stage} paused={cadencePaused} />{total > 0 && !cadenceOver && <span className="version">{String(lead.cadence_version_name ?? detail.cadence_version?.name ?? 'Cadence')} · {progress} of {total}</span>}<span className="location"><MapPinIcon />{String(lead.location ?? 'Not assigned')}</span><div className="record-actions">{!cadenceOver && <button className="secondary icon-label" disabled={busy} onClick={toggleCadence} title={cadencePaused ? 'Resume cadence' : 'Pause cadence'}>{cadencePaused ? <PlayIcon /> : <PauseIcon />}{cadencePaused ? 'Resume cadence':'Pause cadence'}</button>}<Link className="primary icon-label" href={`/leads/${id}/conversations/sms`}><EnvelopeIcon />Send SMS</Link><button className="danger-button" type="button" disabled={busy || deleting} onClick={removeLead}>{deleting ? 'Deleting…' : 'Delete lead'}</button></div></section><nav className="record-tabs">{[['overview','Overview',`/leads/${id}`],['conversations','Conversations',`/leads/${id}/conversations/sms`],['cadence','Cadence',`/leads/${id}/cadence`],['appointments','Appointments',`/leads/${id}/appointments`],['history','History',`/leads/${id}/history`]].map(([key,label,href])=><Link className={tab===key?'active':''} href={href} key={key}>{label}</Link>)}</nav>{children}</>;
+  return <><div className="breadcrumbs"><Link href="/leads">Lead Pipeline</Link><span>/</span><span>{String(lead.display_id)}</span><span>/</span><strong>{lead.full_name}</strong></div><section className="lead-header"><div className="lead-avatar">{initials(lead.full_name)}</div><div className="lead-identity"><h1>{lead.full_name}</h1><span>☎ {phone}</span></div><StatusBadge stage={stage} paused={cadencePaused} />{total > 0 && !cadenceOver && <span className="version">{String(lead.cadence_version_name ?? detail.cadence_version?.name ?? 'Cadence')} · {progress} of {total}</span>}<span className="location"><MapPinIcon />{String(lead.location ?? 'Not assigned')}</span><div className="record-actions">{!cadenceOver && <button className="secondary icon-label" disabled={busy} onClick={toggleCadence} title={cadencePaused ? 'Resume cadence' : 'Pause cadence'}>{cadencePaused ? <PlayIcon /> : <PauseIcon />}{cadencePaused ? 'Resume cadence':'Pause cadence'}</button>}<Link className="primary icon-label" href={`/leads/${id}/conversations/sms`}><EnvelopeIcon />Send SMS</Link><button className="danger-button icon-label" type="button" disabled={busy || deleting} onClick={removeLead} title="Delete lead" aria-label="Delete lead"><TrashIcon />{deleting ? 'Deleting…' : 'Delete lead'}</button></div></section><nav className="record-tabs">{[['overview','Overview',`/leads/${id}`],['conversations','Conversations',`/leads/${id}/conversations/sms`],['cadence','Cadence',`/leads/${id}/cadence`],['appointments','Appointments',`/leads/${id}/appointments`],['history','History',`/leads/${id}/history`]].map(([key,label,href])=><Link className={tab===key?'active':''} href={href} key={key}>{label}</Link>)}</nav>{children}</>;
 }
 
 function LeadOverview({ detail }: { detail: LeadDetail }) {
