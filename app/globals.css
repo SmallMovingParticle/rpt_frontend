@@ -673,3 +673,64 @@ tr.row-booked td:first-child { border-left: 3px solid var(--green); }
 /* A held cadence: amber-neutral so it reads as stopped, not as an error. */
 .status-pill.paused { --status: #7a5a10; background: #fdf6e3; border-color: #e8d9a8; color: #7a5a10; }
 .status-pill.paused svg { flex: 0 0 auto; }
+
+/* ---- outreach runs: one card per run, so a restart never merges with the run before it ---- */
+.cadence-runs { display: flex; flex-direction: column; gap: 0; }
+
+.run-connector { margin: 0; padding: 9px 0 9px 26px; font-size: 12.5px; color: var(--muted);
+  border-left: 2px solid var(--line); margin-left: 15px; }
+
+.cadence-run { border: 1px solid var(--line); border-radius: 8px; background: #fff; overflow: hidden; }
+.cadence-run.current { border-color: #b7c8f5; }
+.cadence-run > summary { list-style: none; cursor: pointer; padding: 13px 16px;
+  display: grid; grid-template-columns: auto 1fr auto; gap: 4px 12px; align-items: center; }
+.cadence-run > summary::-webkit-details-marker { display: none; }
+.cadence-run > summary:hover { background: #fafbfd; }
+.cadence-run > summary:focus-visible { outline: 2px solid var(--blue); outline-offset: -2px; }
+.run-chevron { width: 20px; height: 20px; display: grid; place-items: center; color: var(--muted);
+  transition: transform .18s ease; }
+.cadence-run[open] .run-chevron { transform: rotate(90deg); }
+
+.run-id { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.run-title { font-size: 15px; font-weight: 650; display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
+.run-when { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.run-badge { font-size: 11.5px; font-weight: 600; padding: 2px 8px; border-radius: 4px; }
+.run-badge.ok { background: #e2f3ea; color: #12734a; }
+.run-badge.warn { background: #fcefdd; color: #8a4c0c; }
+
+.run-tallies { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.run-tally { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; font-weight: 600;
+  padding: 3px 8px; border-radius: 4px; background: #f6f8fb; border: 1px solid var(--line);
+  color: #46536e; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.run-tally .dot { width: 6px; height: 6px; border-radius: 50%; }
+.run-tally .dot.ok { background: #17925a; }
+.run-tally .dot.stop { background: #c0323c; }
+.run-tally .dot.idle { background: #9aa4bb; }
+
+.run-steps { border-top: 1px solid var(--line); background: #fafbfd; }
+.run-step { display: grid; grid-template-columns: 30px 66px 1fr auto auto; gap: 12px;
+  align-items: center; padding: 8px 16px; border-bottom: 1px solid var(--line); }
+.run-steps > div:last-child .run-step, .run-step:last-child { border-bottom: none; }
+.run-step-n { font-size: 11.5px; color: var(--muted); text-align: right; font-variant-numeric: tabular-nums; }
+.run-step-day { font-size: 13px; font-weight: 600; color: #46536e; }
+.run-step-what { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.run-step-chan { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 700;
+  letter-spacing: .04em; text-transform: uppercase; color: var(--muted); width: 58px; flex: none; }
+.run-step-result { font-size: 13px; overflow-wrap: anywhere; }
+.run-step-result.ok { color: #12734a; }
+.run-step-result.stop { color: #a81f28; font-weight: 500; }
+.run-step-result.warn { color: #8a4c0c; font-weight: 500; }
+.run-step-result.idle { color: var(--muted); }
+.run-step-time { font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.run-step.idle .run-step-day { color: var(--muted); }
+
+.run-interrupt { margin: 0; padding: 7px 16px; background: #fcefdd; color: #8a4c0c;
+  font-size: 12.5px; font-weight: 600; border-bottom: 1px solid var(--line); }
+
+@media (max-width: 720px) {
+  .cadence-run > summary { grid-template-columns: auto 1fr; }
+  .run-tallies { grid-column: 1 / -1; justify-content: flex-start; padding-left: 32px; }
+  .run-step { grid-template-columns: 26px 1fr; }
+  .run-step-time { grid-column: 2; }
+}
+@media (prefers-reduced-motion: reduce) { .run-chevron { transition: none; } }

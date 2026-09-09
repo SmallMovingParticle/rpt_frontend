@@ -111,6 +111,7 @@ export type LeadDetail = {
   appointments: Array<Record<string, unknown>>;
   history: Array<Record<string, unknown>>;
   message_overrides: Array<Record<string, unknown>>;
+  cadence_actions?: Array<Record<string, unknown>>;
   cadence_version?: CadenceVersion | null;
 };
 
