@@ -1072,8 +1072,8 @@ function CadenceRunCard({ run, index, total, pauses, onReschedule }: {
         return <div key={String(event.id)}>
           {pause && <p className="run-interrupt">Paused {time(pause.paused)} → resumed {time(pause.resumed)} · overdue steps then ran together</p>}
           <div className={'run-step ' + result.tone}>
-            <span className="run-step-n">{position + 1}</span>
-            <span className="run-step-day">Day {String(event.day_offset ?? '—')}</span>
+            <span className="run-step-n">{event.day_offset === null || event.day_offset === undefined ? '•' : position + 1}</span>
+            <span className="run-step-day">{event.day_offset === null || event.day_offset === undefined ? 'Callback' : `Day ${String(event.day_offset)}`}</span>
             <span className="run-step-what">
               <span className="run-step-chan"><CadenceChannelIcon channel={String(event.channel)} />{event.channel === 'call' ? 'Call' : 'Text'}</span>
               <span className={'run-step-result ' + result.tone}>{result.label}</span>
