@@ -996,12 +996,12 @@ function stepResult(event: RunEvent): { tone: string; label: string } {
   if (status === 'attempted' || status === 'in_flight') return { tone: 'warn', label: 'Awaiting result' };
   if (event.channel === 'sms') {
     if (!smsBlocked(event)) return { tone: 'ok', label: 'Delivered' };
-    const reason = event.failure_reason ? ' \u00b7 carrier ' + String(event.failure_reason) : '';
+    const reason = event.failure_reason ? ' · carrier ' + String(event.failure_reason) : '';
     return { tone: 'stop', label: 'Not delivered' + reason };
   }
   const outcome = String(event.outcome ?? '');
   if (!outcome) return { tone: 'warn', label: 'No outcome recorded' };
-  if (outcome === 'manual') return { tone: 'warn', label: 'Answered \u00b7 no outcome recorded' };
+  if (outcome === 'manual') return { tone: 'warn', label: 'Answered · no outcome recorded' };
   return { tone: outcome === 'booked' ? 'ok' : 'plain', label: humanize(outcome) };
 }
 
@@ -1015,8 +1015,8 @@ function CadenceRunCard({ run, index, total, pauses, onReschedule }: {
   const isCurrent = index === total - 1;
   const tally = runTallies(run);
   const ran = runRan(run);
-  const span = ran.length ? date(ran[0]) + ' \u2192 ' + time(ran[ran.length - 1]) : 'Not started';
-  const length = ran.length > 1 ? ' \u00b7 ' + runDuration(ran[0], ran[ran.length - 1]) : '';
+  const span = ran.length ? date(ran[0]) + ' → ' + time(ran[ran.length - 1]) : 'Not started';
+  const length = ran.length > 1 ? ' · ' + runDuration(ran[0], ran[ran.length - 1]) : '';
 
   // Cancelled steps collapse into one row: seven near-identical rows say the
   // same nothing seven times and bury the steps that did run.
@@ -1052,7 +1052,7 @@ function CadenceRunCard({ run, index, total, pauses, onReschedule }: {
       </span>
       <span className="run-id">
         <span className="run-title">Outreach {index + 1}
-          <span className={'run-badge ' + tone}>{isCurrent ? 'Current \u00b7 ' + label.toLowerCase() : label}</span>
+          <span className={'run-badge ' + tone}>{isCurrent ? 'Current · ' + label.toLowerCase() : label}</span>
         </span>
         <span className="run-when">{span}{length}</span>
       </span>
@@ -1070,10 +1070,10 @@ function CadenceRunCard({ run, index, total, pauses, onReschedule }: {
         const result = stepResult(event);
         const pause = pauseBefore(event);
         return <div key={String(event.id)}>
-          {pause && <p className="run-interrupt">Paused {time(pause.paused)} \u2192 resumed {time(pause.resumed)} \u00b7 overdue steps then ran together</p>}
+          {pause && <p className="run-interrupt">Paused {time(pause.paused)} → resumed {time(pause.resumed)} · overdue steps then ran together</p>}
           <div className={'run-step ' + result.tone}>
             <span className="run-step-n">{position + 1}</span>
-            <span className="run-step-day">Day {String(event.day_offset ?? '\u2014')}</span>
+            <span className="run-step-day">Day {String(event.day_offset ?? '—')}</span>
             <span className="run-step-what">
               <span className="run-step-chan"><CadenceChannelIcon channel={String(event.channel)} />{event.channel === 'call' ? 'Call' : 'Text'}</span>
               <span className={'run-step-result ' + result.tone}>{result.label}</span>
@@ -1085,10 +1085,10 @@ function CadenceRunCard({ run, index, total, pauses, onReschedule }: {
         </div>;
       })}
       {cancelled.length > 0 && <div className="run-step idle">
-        <span className="run-step-n">{shown.length + 1}{cancelled.length > 1 ? '\u2013' + (shown.length + cancelled.length) : ''}</span>
+        <span className="run-step-n">{shown.length + 1}{cancelled.length > 1 ? '–' + (shown.length + cancelled.length) : ''}</span>
         <span className="run-step-day">{cancelled.length} step{cancelled.length === 1 ? '' : 's'}</span>
         <span className="run-step-what"><span className="run-step-result idle">Cancelled by restart</span></span>
-        <span className="run-step-time">\u2014</span>
+        <span className="run-step-time">—</span>
       </div>}
     </div>
   </details>;
