@@ -734,3 +734,8 @@ tr.row-booked td:first-child { border-left: 3px solid var(--green); }
   .run-step-time { grid-column: 2; }
 }
 @media (prefers-reduced-motion: reduce) { .run-chevron { transition: none; } }
+
+/* A button that pairs an icon with its label. Never defined, so the icon and
+   text were laid out as inline content and wrapped onto separate lines. */
+.icon-label { display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
+.icon-label svg { flex: none; }
