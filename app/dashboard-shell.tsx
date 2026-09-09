@@ -1137,7 +1137,7 @@ function LeadCadencePage({ detail, action, templates }: { detail: LeadDetail; ac
             </div>)}
           </div>}
     </Panel>
-    <div className="stack"><Panel title="Personalized outreach"><p className="panel-subtitle">Changes here apply only to {String(detail.lead.full_name)}.</p><dl className="detail-list"><div><dt>Current outreach plan</dt><dd>{detail.cadence_version?.name ?? 'Standard outreach plan'}</dd></div><div><dt>Time zone</dt><dd>{String(detail.lead.timezone ?? 'Not recorded')}</dd></div><div><dt>Preferred location</dt><dd>{String(detail.lead.location ?? 'Not assigned')}</dd></div><div><dt>Next send window</dt><dd>Business hours</dd></div></dl><CadenceStudio action={action} templates={templates} leadId={String(detail.lead.id)} /></Panel><Panel title="Contact rules"><Toggle label="Do not contact" enabled={String(detail.lead.status) === 'do_not_contact'} hint="Stops outreach immediately" onChange={(next) => action(`leads/${detail.lead.id}/contact-rules`, 'POST', { do_not_contact: next })} /><Toggle label="Call opt-out" enabled={Boolean(detail.lead.call_opt_out)} hint="Texts still send" onChange={(next) => action(`leads/${detail.lead.id}/contact-rules`, 'POST', { call_opt_out: next })} /><Toggle label="Text opt-out" enabled={Boolean(detail.lead.sms_opt_out)} hint="Calls still go out" onChange={(next) => action(`leads/${detail.lead.id}/contact-rules`, 'POST', { sms_opt_out: next })} /><p className="muted">Do not contact blocks calls and texts, cancels the remaining schedule, and cannot be bypassed.</p></Panel></div>
+    <div className="stack"><Panel title="Personalized outreach"><p className="panel-subtitle">Changes here apply only to {String(detail.lead.full_name)}.</p><dl className="detail-list"><div><dt>Current outreach plan</dt><dd>{detail.cadence_version?.name ?? 'Standard outreach plan'}</dd></div><div><dt>Time zone</dt><dd>{String(detail.lead.timezone ?? 'Not recorded')}</dd></div><div><dt>Preferred location</dt><dd>{String(detail.lead.location ?? 'Not assigned')}</dd></div><div><dt>Next send window</dt><dd>Business hours</dd></div></dl><CadenceStudio action={action} templates={templates} leadId={String(detail.lead.id)} /></Panel><Panel title="Contact rules"><Toggle label="Do not contact" enabled={String(detail.lead.status) === 'do_not_contact'} onChange={(next) => action(`leads/${detail.lead.id}/contact-rules`, 'POST', { do_not_contact: next })} /><p className="muted">Blocks calls and texts, cancels the remaining schedule, and moves the lead to Closed. Turning it off releases the block but does not restart outreach.</p></Panel></div>
   </div>;
 }
 
@@ -1168,14 +1168,13 @@ function Alert({ children, tone='info' }: { children:ReactNode; tone?:'info'|'wa
 function Empty({ title, body }: { title:string; body:string }) { return <div className="empty"><h2>{title}</h2><p>{body}</p></div>; }
 function Stat({ label,value,trend }: { label:string; value:string; trend?:string }) { return <div className="stat"><small>{label}</small><strong>{value}</strong>{trend&&<span>{trend}</span>}</div>; }
 function Metric({ label,value,width,tone }: { label:string; value:string; width:string; tone?:string }) { return <div className={`metric ${tone??''}`}><div><span>{label}</span><strong>{value}</strong></div><i><b style={{width}} /></i></div>; }
-function Toggle({ label, enabled, onChange, hint }: {
+function Toggle({ label, enabled, onChange }: {
   label: string;
   enabled: boolean;
   // A switch with no onChange used to flip local state and nothing else, so the
   // dashboard reported contact as blocked while the worker kept calling. It now
   // renders read-only unless it is given somewhere to save.
   onChange?: (next: boolean) => Promise<unknown>;
-  hint?: string;
 }) {
   const [on, setOn] = useState(enabled);
   const [saving, setSaving] = useState(false);
@@ -1193,7 +1192,7 @@ function Toggle({ label, enabled, onChange, hint }: {
   }
 
   return <div className="toggle-row">
-    <span>{label}{hint && <small className="toggle-hint">{hint}</small>}</span>
+    <span>{label}</span>
     <button className={on ? 'on' : ''} type="button" disabled={!onChange || saving}
       aria-label={`Turn ${label} ${on ? 'off' : 'on'}`} aria-pressed={on} onClick={toggle}><i /></button>
     <b>{saving ? '…' : on ? 'ON' : 'OFF'}</b>
