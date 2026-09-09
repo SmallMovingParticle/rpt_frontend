@@ -1201,7 +1201,20 @@ function Toggle({ label, enabled, onChange }: {
 function ActivityList({ detail, items }: { detail:LeadDetail; items?: Array<Record<string,unknown>> }) { const activity=items ?? (detail.history.length?detail.history:[{to_status:'created',reason:'Lead created',source:'System',changed_at:detail.lead.created_at}]); return activity.length ? <div className="activity-list">{activity.map((item,index)=><div key={index}><time>{date(String(item.changed_at))}</time><span>{index===0?'▦':index===1?'☎':index===2?'●':'○'}</span><p><strong>{humanize(String(item.to_status))}</strong><small>{String(item.reason ?? 'Status updated')}</small></p><b>{String(item.source ?? 'System')}</b></div>)}</div> : <Empty title="No matching activity" body="This lead has no activity in the selected category." />; }
 function activityCategory(item: Record<string,unknown>) { const value=`${item.to_status ?? ''} ${item.reason ?? ''} ${item.source ?? ''}`.toLowerCase(); if(/appointment|booked|stride/.test(value))return'appointments';if(/sms|message|twilio/.test(value))return'messages';if(/call|callback|vapi/.test(value))return'calls';return'cadence'; }
 function initials(name:string){return name.split(/\s+/).map((part)=>part[0]).join('').slice(0,2).toUpperCase();}
-function humanize(value:string){return value.replaceAll('_',' ').replace(/\b\w/g,(letter)=>letter.toUpperCase());}
+// Statuses whose stored name is not what staff should read. 'declined' is
+// only ever reached from a not_interested call outcome, so showing "Declined"
+// described a different event than the one the patient actually gave.
+const STATUS_LABELS: Record<string,string> = {
+  declined: 'Not interested',
+  callback_scheduled: 'Callback scheduled',
+  booking_link_sent: 'Booking link sent',
+  transferred_human: 'Transferred to staff',
+  closed_no_response: 'Closed, no response',
+  do_not_contact: 'Do not contact',
+  invalid_phone: 'Invalid phone number',
+  wrong_person: 'Wrong person',
+};
+function humanize(value:string){return STATUS_LABELS[value] ?? value.replaceAll('_',' ').replace(/\b\w/g,(letter)=>letter.toUpperCase());}
 // Every time in this app is a clinic time. Rendering in the viewer's own zone
 // made a 9:00 AM Pacific callback read as 9:30 PM to staff in India, so the
 // practice timezone is pinned here and shown alongside the value.
