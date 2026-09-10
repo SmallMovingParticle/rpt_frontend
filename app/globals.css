@@ -739,3 +739,8 @@ tr.row-booked td:first-child { border-left: 3px solid var(--green); }
    text were laid out as inline content and wrapped onto separate lines. */
 .icon-label { display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
 .icon-label svg { flex: none; }
+
+/* Template Studio splits reusable copy from the locked cadence messages. */
+.template-group-label { margin: 14px 0 6px; font-size: 11.5px; font-weight: 700; letter-spacing: .06em;
+  text-transform: uppercase; color: var(--muted); }
+.template-group-label:first-of-type { margin-top: 4px; }
