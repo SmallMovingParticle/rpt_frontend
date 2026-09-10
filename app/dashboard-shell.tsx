@@ -564,7 +564,7 @@ function AdministrationPage({ snapshot }: { snapshot: Snapshot }) {
 }
 
 function GlobalCadencePage({ snapshot, action, loading }: { snapshot: Snapshot; action: DashboardAction; loading: boolean }) {
-  return <><PageTitle title="Global Cadence Studio" subtitle="Build, compare, and activate audited outreach versions." /><Alert>Activation replaces only future planned work. In-flight and completed outreach stays intact, and personalized patient plans remain unchanged.</Alert>
+  return <><PageTitle title="Global Cadence Studio" subtitle="Build, compare, and activate audited outreach versions." /><Alert>New leads start on the active version. Leads already in outreach stay on the version they started, and personalized patient plans remain unchanged.</Alert>
     <CadenceStudio action={action} templates={snapshot.templates} loading={loading && !snapshot.cadence.length} />
   </>;
 }
@@ -577,6 +577,7 @@ function CadenceStudio({ action, templates, leadId, loading = false }: { action:
   const [activating, setActivating] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [hardDeleting, setHardDeleting] = useState<number | null>(null);
+  const [updatingStep, setUpdatingStep] = useState<number | null>(null);
   const [renaming, setRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState('');
   const [switchingMode, setSwitchingMode] = useState(false);
@@ -701,6 +702,21 @@ function CadenceStudio({ action, templates, leadId, loading = false }: { action:
     }
   }
 
+  async function togglePublishedStep(step: CadenceStep, enabled: boolean) {
+    if (!step.id || updatingStep !== null) return;
+    setUpdatingStep(step.id);
+    try {
+      const updated = await action(`cadence-steps/${step.id}`, 'PATCH', { is_active: enabled });
+      if (updated) {
+        setVersions((current) => current.map((version) => version.id === selected.id
+          ? { ...version, steps: version.steps.map((item) => item.id === step.id ? { ...item, is_active: enabled } : item) }
+          : version));
+      }
+    } finally {
+      setUpdatingStep(null);
+    }
+  }
+
   async function permanentlyDeleteVersion(version: CadenceVersion) {
     if (version.status !== 'deleted' || hardDeleting !== null) return;
     if (!window.confirm(`Permanently delete ${version.name}?\n\nThis removes its cadence steps and message copy from the database and cannot be undone.`)) return;
@@ -736,10 +752,10 @@ function CadenceStudio({ action, templates, leadId, loading = false }: { action:
       {scoped.map((version) => <button type="button" role="tab" aria-selected={version.id === selected.id} className={version.id === selected.id ? 'selected' : ''} onClick={() => setSelectedId(version.id)} key={version.id}><span>{version.name}</span><small>{cadenceStatusLabel(version.status)}</small></button>)}
       <button className="add-version" type="button" disabled={creating} onClick={() => cloneVersion()}>{creating ? 'Creating…' : '+ Add version'}</button>
     </div>
-    <div className="version-toolbar"><div>{renameValue ? <label className="version-name-editor"><span className="sr-only">Version name</span><input autoFocus value={renameValue} maxLength={120} onChange={(event) => setRenameValue(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') saveName(); if (event.key === 'Escape') setRenameValue(''); }} /></label> : <strong>{selected.name}</strong>}<small>{selected.status === 'deleted' ? 'This complete version is retained and can be reused as a new draft.' : selected.status === 'active' ? 'Locked while active. Create an editable draft to change it.' : 'Locked. Create an editable draft to change it; deleting keeps it available here.'}</small></div><div className="version-toolbar-actions">{renameValue ? <><button className="secondary" type="button" disabled={renaming || !renameValue.trim()} onClick={saveName}>{renaming ? 'Saving…' : 'Save name'}</button><button className="secondary" type="button" onClick={() => setRenameValue('')}>Cancel</button></> : <button className="secondary" type="button" onClick={() => setRenameValue(selected.name)}>Rename</button>}{selected.status === 'deleted' ? <button className="primary" type="button" disabled={creating} onClick={() => cloneVersion(selected)}>{creating ? 'Creating…' : 'Reuse as new draft'}</button> : <button className="danger-button" type="button" disabled={selected.status === 'active' || deleting} onClick={deleteVersion}>{deleting ? 'Deleting…' : 'Delete version'}</button>}</div></div>
+    <div className="version-toolbar"><div>{renameValue ? <label className="version-name-editor"><span className="sr-only">Version name</span><input autoFocus value={renameValue} maxLength={120} onChange={(event) => setRenameValue(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') saveName(); if (event.key === 'Escape') setRenameValue(''); }} /></label> : <strong>{selected.name}</strong>}<small>{selected.status === 'deleted' ? 'This complete version is retained and can be reused as a new draft.' : 'Use the Status column to enable or disable steps. Create a draft for timing, channel, or wording changes.'}</small></div><div className="version-toolbar-actions">{renameValue ? <><button className="secondary" type="button" disabled={renaming || !renameValue.trim()} onClick={saveName}>{renaming ? 'Saving…' : 'Save name'}</button><button className="secondary" type="button" onClick={() => setRenameValue('')}>Cancel</button></> : <button className="secondary" type="button" onClick={() => setRenameValue(selected.name)}>Rename</button>}{selected.status === 'deleted' ? <button className="primary" type="button" disabled={creating} onClick={() => cloneVersion(selected)}>{creating ? 'Creating…' : 'Reuse as new draft'}</button> : <button className="danger-button" type="button" disabled={selected.status === 'active' || deleting} onClick={deleteVersion}>{deleting ? 'Deleting…' : 'Delete version'}</button>}</div></div>
     {selected.status === 'draft'
       ? <CadenceEditor key={`${selected.id}-${selected.name}`} version={selected} templates={templates} action={action} local={false} onChanged={() => setRefresh((value) => value + 1)} />
-      : <div className="two-col wide-left"><Panel title={selected.name}><CadenceStepsTable steps={selected.steps} /></Panel><div className="stack"><Panel title="Version details"><dl className="detail-list"><div><dt>Status</dt><dd><StatusText status={cadenceStatusLabel(selected.status)} /></dd></div><div><dt>Version</dt><dd>v{selected.version_number}</dd></div><div><dt>Scope</dt><dd>Global default</dd></div><div><dt>Steps</dt><dd>{selected.steps.length}</dd></div></dl><div className="version-detail-actions">{selected.status === 'archived' && <button className="primary full" type="button" disabled={activating} onClick={activatePreviousVersion}>{activating ? 'Activating…' : 'Activate this version'}</button>}<button className={selected.status === 'archived' ? 'secondary full' : 'primary full'} type="button" disabled={creating || activating} onClick={() => cloneVersion(selected)}>{creating ? 'Creating…' : selected.status === 'deleted' ? 'Reuse as new draft' : 'Create editable draft'}</button></div><p className="control-note">Published versions can't be edited. A draft copies every step, and its timing, channel, wording and Enabled switch are all editable.</p></Panel><Panel title="Guardrails"><ul className="check-list"><li>✓ DNC enforced</li><li>✓ Call opt-out enforced</li><li>✓ Business-hour windows</li><li>✓ Audited changes</li></ul></Panel></div></div>}
+      : <div className="two-col wide-left"><Panel title={selected.name}><CadenceStepsTable steps={selected.steps} onToggle={selected.status === 'deleted' ? undefined : togglePublishedStep} updatingStep={updatingStep} /></Panel><div className="stack"><Panel title="Version details"><dl className="detail-list"><div><dt>Status</dt><dd><StatusText status={cadenceStatusLabel(selected.status)} /></dd></div><div><dt>Version</dt><dd>v{selected.version_number}</dd></div><div><dt>Scope</dt><dd>Global default</dd></div><div><dt>Steps</dt><dd>{selected.steps.length}</dd></div></dl><div className="version-detail-actions">{selected.status === 'archived' && <button className="primary full" type="button" disabled={activating} onClick={activatePreviousVersion}>{activating ? 'Activating…' : 'Activate this version'}</button>}<button className={selected.status === 'archived' ? 'secondary full' : 'primary full'} type="button" disabled={creating || activating} onClick={() => cloneVersion(selected)}>{creating ? 'Creating…' : selected.status === 'deleted' ? 'Reuse as new draft' : 'Create editable draft'}</button></div><p className="control-note">Status changes apply when this version starts or restarts. Current lead schedules stay unchanged. Create a draft for every other edit.</p></Panel><Panel title="Guardrails"><ul className="check-list"><li>✓ DNC enforced</li><li>✓ Call opt-out enforced</li><li>✓ Business-hour windows</li><li>✓ Audited changes</li></ul></Panel></div></div>}
   </section><aside className="deleted-versions"><header><div><h2>Deleted versions</h2><p>Review, reuse, or permanently remove</p></div><span>{deleted.length}</span></header>{deleted.length ? <div className="deleted-version-list">{deleted.map((version) => <article className={version.id === selected.id ? 'selected' : ''} key={version.id}><button type="button" className="deleted-version-select" aria-pressed={version.id === selected.id} onClick={() => { setSelectedId(version.id); setRenameValue(''); }}><strong>{version.name}</strong><small>Deleted {version.deleted_at ? date(version.deleted_at) : 'recently'}</small><span>v{version.version_number} · {version.steps.length} steps</span></button><button className="permanent-delete" type="button" disabled={hardDeleting !== null} onClick={() => permanentlyDeleteVersion(version)} aria-label={`Permanently delete ${version.name}`}>{hardDeleting === version.id ? 'Deleting…' : 'Permanently delete'}</button></article>)}</div> : <p className="deleted-empty">Deleted cadence versions will appear here.</p>}</aside></div>;
 }
 
@@ -747,8 +763,8 @@ function cadenceStatusLabel(status: CadenceVersion['status']) {
   return status === 'draft' ? 'Draft' : status === 'archived' ? 'Previous' : humanize(status);
 }
 
-function CadenceStepsTable({ steps }: { steps: CadenceStep[] }) {
-  return <DataTable heads={['Step','Day','Action','Channel','Status']}>{steps.map((step,index)=><tr key={step.id ?? index}><td><span className="step-number">{index+1}</span></td><td>Day {step.day_offset}</td><td><strong>{step.description}</strong>{step.channel === 'sms' && <small className="step-copy">{step.sms_body}</small>}</td><td>{step.channel === 'call' ? 'Phone call' : 'Text message'}</td><td><StatusText status={step.is_active ? 'Active' : 'Disabled'} /></td></tr>)}</DataTable>;
+function CadenceStepsTable({ steps, onToggle, updatingStep }: { steps: CadenceStep[]; onToggle?: (step: CadenceStep, enabled: boolean) => Promise<void>; updatingStep?: number | null }) {
+  return <DataTable heads={['Step','Day','Action','Channel','Status']}>{steps.map((step,index)=><tr key={step.id ?? index}><td><span className="step-number">{index+1}</span></td><td>Day {step.day_offset}</td><td><strong>{step.description}</strong>{step.channel === 'sms' && <small className="step-copy">{step.sms_body}</small>}</td><td>{step.channel === 'call' ? 'Phone call' : 'Text message'}</td><td>{onToggle ? <label className="cadence-status-toggle"><input type="checkbox" checked={step.is_active} disabled={updatingStep !== null} onChange={(event) => void onToggle(step, event.target.checked)} /><span>{updatingStep === step.id ? 'Saving…' : step.is_active ? 'Active' : 'Disabled'}</span></label> : <StatusText status={step.is_active ? 'Active' : 'Disabled'} />}</td></tr>)}</DataTable>;
 }
 
 function CadenceEditor({ version, templates, action, local, onChanged }: { version: CadenceVersion; templates: Array<Record<string, unknown>>; action: DashboardAction; local: boolean; onChanged: (activated: boolean) => void }) {
@@ -794,11 +810,11 @@ function TemplateStudio({ snapshot, action, onPublished }: { snapshot: Snapshot;
   // Reusable copy and live cadence messages are different things: the first is
   // freely editable, the second belongs to a published version and changing it
   // here would alter what live leads receive with no new version to show for it.
-  const reusable = templates.filter((item) => item.cadence_step_id === null || item.cadence_step_id === undefined);
-  const cadenceMessages = templates.filter((item) => item.cadence_step_id !== null && item.cadence_step_id !== undefined);
+  const reusable = templates.filter((item) => item.cadence_step_id == null && item.cadence_version_id == null);
+  const cadenceMessages = templates.filter((item) => item.cadence_step_id != null);
   const cadenceVersionName = String(cadenceMessages[0]?.version_name ?? 'active cadence');
   const selected = templates.find((item) => String(item.id) === selectedId) ?? reusable[0] ?? templates[0];
-  const locked = Boolean(selected && selected.cadence_step_id !== null && selected.cadence_step_id !== undefined);
+  const locked = Boolean(selected && selected.cadence_step_id != null);
   const id = String(selected?.id ?? '');
   const original = String(selected?.body ?? '');
   const originalName = smsTemplateName(selected);
@@ -842,8 +858,10 @@ function TemplateStudio({ snapshot, action, onPublished }: { snapshot: Snapshot;
 
 function smsTemplateName(template: Record<string, unknown> | undefined) {
   if (!template) return '';
-  const value = String(template.name ?? template.key ?? 'SMS template').replaceAll('_', ' ');
-  return value.replace(/^day\s*(\d+)\s+sms$/i, 'Day $1 SMS').replace(/\b\w/g, (letter) => letter.toUpperCase());
+  const raw = String(template.name ?? template.key ?? 'SMS template');
+  const generated = raw.match(/^step_(\d+)_[0-9a-f]{12}$/i);
+  if (generated) return `Step ${generated[1]}`;
+  return raw.replaceAll('_', ' ').replace(/^day\s*(\d+)\s+sms$/i, 'Day $1 SMS').replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
 function NewTemplateDialog({ onClose, onCreate }: { onClose: () => void; onCreate: (name: string, body: string) => Promise<boolean> }) {
@@ -951,15 +969,6 @@ function CadenceChannelIcon({ channel }: { channel: string }) {
     {channel === 'call'
       ? <path d="M5.3 3.3 7.6 3l1.2 3.4-1.5 1.2a11 11 0 0 0 5.1 5.1l1.2-1.5 3.4 1.2-.3 2.3a2.2 2.2 0 0 1-2.2 1.9C8.4 16.6 3.4 11.6 3.4 5.5a2.2 2.2 0 0 1 1.9-2.2Z" />
       : <path d="M3.2 4.2h13.6v9.4H8l-3.7 2.2v-2.2H3.2V4.2Z" />}
-  </svg>;
-}
-
-function CadenceStateIcon({ tone }: { tone: string }) {
-  return <svg viewBox="0 0 20 20" width="15" height="15" fill="none" stroke="currentColor"
-    strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-    {tone === 'warning'
-      ? <><path d="M10 2.8 18 17H2L10 2.8Z" /><path d="M10 7v4.5M10 14.4h.01" /></>
-      : <><circle cx="10" cy="10" r="7.2" />{tone === 'complete' ? <path d="m6.8 10 2 2 4.4-4.5" /> : tone === 'planned' ? <path d="M10 6.3V10l2.5 1.6" /> : tone === 'progress' ? <path d="M10 6v4l3 2" /> : <path d="M7.4 10h5.2" />}</>}
   </svg>;
 }
 
@@ -1144,7 +1153,7 @@ function LeadCadencePage({ detail, action, templates }: { detail: LeadDetail; ac
             </div>)}
           </div>}
     </Panel>
-    <div className="stack"><Panel title="Personalized outreach"><p className="panel-subtitle">Changes here apply only to {String(detail.lead.full_name)}.</p><dl className="detail-list"><div><dt>This lead's plan</dt><dd>{detail.cadence_version?.name ?? 'Standard outreach plan'}</dd></div>{detail.lead.global_version_name ? <div><dt>Global default</dt><dd>{String(detail.lead.global_version_name)}</dd></div> : null}<div><dt>Time zone</dt><dd>{String(detail.lead.timezone ?? 'Not recorded')}</dd></div><div><dt>Preferred location</dt><dd>{String(detail.lead.location ?? 'Not assigned')}</dd></div><div><dt>Next send window</dt><dd>Business hours</dd></div></dl><CadenceStudio action={action} templates={templates} leadId={String(detail.lead.id)} /></Panel><Panel title="Contact rules"><Toggle label="Do not contact" enabled={String(detail.lead.status) === 'do_not_contact'} onChange={(next) => action(`leads/${detail.lead.id}/contact-rules`, 'POST', { do_not_contact: next })} /><p className="muted">Blocks calls and texts, cancels the remaining schedule, and moves the lead to Closed. Turning it off releases the block but does not restart outreach.</p></Panel></div>
+    <div className="stack"><Panel title="Personalized outreach"><p className="panel-subtitle">Changes here apply only to {String(detail.lead.full_name)}.</p><dl className="detail-list"><div><dt>Lead plan</dt><dd>{detail.cadence_version?.name ?? 'Standard outreach plan'}</dd></div>{detail.lead.global_version_name ? <div><dt>Global default</dt><dd>{String(detail.lead.global_version_name)}</dd></div> : null}<div><dt>Time zone</dt><dd>{String(detail.lead.timezone ?? 'Not recorded')}</dd></div><div><dt>Preferred location</dt><dd>{String(detail.lead.location ?? 'Not assigned')}</dd></div><div><dt>Next send window</dt><dd>Business hours</dd></div></dl><CadenceStudio action={action} templates={templates} leadId={String(detail.lead.id)} /></Panel><Panel title="Contact rules"><Toggle label="Do not contact" enabled={String(detail.lead.status) === 'do_not_contact'} onChange={(next) => action(`leads/${detail.lead.id}/contact-rules`, 'POST', { do_not_contact: next })} /><p className="muted">Blocks calls and texts, cancels the remaining schedule, and moves the lead to Closed. Turning it off releases the block but does not restart outreach.</p></Panel></div>
   </div>;
 }
 
@@ -1183,26 +1192,20 @@ function Toggle({ label, enabled, onChange }: {
   // renders read-only unless it is given somewhere to save.
   onChange?: (next: boolean) => Promise<unknown>;
 }) {
-  const [on, setOn] = useState(enabled);
   const [saving, setSaving] = useState(false);
-  useEffect(() => { setOn(enabled); }, [enabled]);
 
   async function toggle() {
     if (!onChange || saving) return;
-    const next = !on;
-    setOn(next);
     setSaving(true);
-    // Put it back if the save fails: a switch that stays on after a failed
-    // write is the same lie this replaced.
-    if (!await onChange(next)) setOn(!next);
+    await onChange(!enabled);
     setSaving(false);
   }
 
   return <div className="toggle-row">
     <span>{label}</span>
-    <button className={on ? 'on' : ''} type="button" disabled={!onChange || saving}
-      aria-label={`Turn ${label} ${on ? 'off' : 'on'}`} aria-pressed={on} onClick={toggle}><i /></button>
-    <b>{saving ? '…' : on ? 'ON' : 'OFF'}</b>
+    <button className={enabled ? 'on' : ''} type="button" disabled={!onChange || saving}
+      aria-label={`Turn ${label} ${enabled ? 'off' : 'on'}`} aria-pressed={enabled} onClick={toggle}><i /></button>
+    <b>{saving ? '…' : enabled ? 'ON' : 'OFF'}</b>
   </div>;
 }
 function ActivityList({ detail, items }: { detail:LeadDetail; items?: Array<Record<string,unknown>> }) { const activity=items ?? (detail.history.length?detail.history:[{to_status:'created',reason:'Lead created',source:'System',changed_at:detail.lead.created_at}]); return activity.length ? <div className="activity-list">{activity.map((item,index)=><div key={index}><time>{date(String(item.changed_at))}</time><span>{index===0?'▦':index===1?'☎':index===2?'●':'○'}</span><p><strong>{humanize(String(item.to_status))}</strong><small>{String(item.reason ?? 'Status updated')}</small></p><b>{String(item.source ?? 'System')}</b></div>)}</div> : <Empty title="No matching activity" body="This lead has no activity in the selected category." />; }

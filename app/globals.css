@@ -242,6 +242,10 @@ tr.row-booked td:first-child { border-left: 3px solid var(--green); }
 .admin-card p { margin: 0; color: var(--muted); line-height: 1.45; }
 .step-number { width: 31px; height: 31px; border: 1px solid var(--line); border-radius: 50%; display: grid; place-items: center; }
 .step-copy { display: block; max-width: 620px; margin-top: 5px; color: var(--muted); line-height: 1.4; white-space: pre-wrap; }
+.cadence-status-toggle { display: inline-flex; align-items: center; gap: 7px; color: var(--green); font-size: 13px; white-space: nowrap; cursor: pointer; }
+.cadence-status-toggle:has(input:not(:checked)) { color: var(--amber); }
+.cadence-status-toggle input { width: 16px; height: 16px; accent-color: var(--blue); cursor: pointer; }
+.cadence-status-toggle input:disabled { cursor: wait; }
 .cadence-studio { display: grid; gap: 16px; }
 .cadence-version-layout { display: grid; grid-template-columns: minmax(0,1fr) 280px; gap: 18px; align-items: start; }
 .version-tabs { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 2px; }
