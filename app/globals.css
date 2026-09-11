@@ -139,6 +139,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .status-pill > i { font-style: normal; }
 .version { color: var(--indigo); border-color: #bdb2ff; background: #f5f2ff; }
 .next { width: 100%; margin-top: auto; padding-top: 13px; border-top: 1px solid var(--line); color: #0656d9; font-size: 14px; }
+.next.attention-reason { color: var(--amber); }
 .toast { position: fixed; right: 24px; bottom: 24px; z-index: 20; border-radius: 9px; background: #073f27; color: #fff; padding: 14px 18px; box-shadow: 0 16px 40px #00133b33; }
 
 .status-tiles { display: grid; grid-template-columns: repeat(5, 1fr); gap: 16px; margin-bottom: 20px; }
