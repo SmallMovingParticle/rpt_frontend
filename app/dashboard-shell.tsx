@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { FormEvent, ReactNode, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { CadenceStep, CadenceVersion, emptySnapshot, Lead, LeadCreateInput, LeadDetail, LeadStage, Snapshot } from './dashboard-data';
+import { AssistantDock, AssistantPage, ThemeToggle, setLeadDragData } from './assistant';
 
 const statusMeta: Record<LeadStage, { label: string }> = {
   new: { label: 'New' },
@@ -303,7 +304,7 @@ export function DashboardShell({ displayName, localPreview = false }: { displayN
     else setMenuOpen((current) => !current);
   }
 
-  const activeLabel = nav.find(([href]) => href === '/' ? pathname === '/' : pathname.startsWith(href))?.[2] ?? 'Lead Workspace';
+  const activeLabel = pathname === '/assistant' ? 'Outreach Assistant' : nav.find(([href]) => href === '/' ? pathname === '/' : pathname.startsWith(href))?.[2] ?? 'Lead Workspace';
   return (
     <div className={`app-shell ${menuOpen ? '' : 'is-collapsed'} ${mobileMenuOpen ? 'mobile-menu-open' : ''}`}>
       <aside className="sidebar">
@@ -324,18 +325,19 @@ export function DashboardShell({ displayName, localPreview = false }: { displayN
           <div className="top-actions">
             <SelectMenu className="location-control" ariaLabel="Filter dashboard by location" value={selectedLocation} onChange={setSelectedLocation} icon={<MapPinIcon />} options={['All Locations', ...locations].map((location) => ({ value: location, label: location }))} />
             <form className="global-search" role="search" onSubmit={searchDashboard}><span aria-hidden="true">⌕</span><input aria-label="Global search" value={globalQuery} onChange={(event) => setGlobalQuery(event.target.value)} placeholder="Search leads, tasks, or appointments" /></form>
-            <span className={`connection ${live ? 'live' : ''}`}><i />{live ? 'Connected' : 'Preview'}</span><button className="avatar" type="button" title={displayName}>{initials(displayName)}</button>
+            <ThemeToggle /><span className={`connection ${live ? 'live' : ''}`}><i />{live ? 'Connected' : 'Preview'}</span><button className="avatar" type="button" title={displayName}>{initials(displayName)}</button>
           </div>
         </header>
-        <main className="content">{renderPage(pathname, search.get('view'), search.get('search'), search.get('stage'), visibleSnapshot, !live, detail, router, action, () => setAddingLead(true), resolveLeadReview, publishTemplate)}</main>
+        <main className="content">{renderPage(pathname, search.get('view'), search.get('search'), search.get('stage'), search.get('chat'), visibleSnapshot, !live, detail, router, action, () => setAddingLead(true), resolveLeadReview, publishTemplate)}</main>
       </div>
+      {pathname !== '/assistant' && <AssistantDock leads={snapshot.leads} currentPath={pathname} currentLeadId={leadId} />}
       {notice && <div className="toast" role="status">✓ {notice}</div>}
       {addingLead && <AddLeadDialog defaultLocation={selectedLocation === 'All Locations' ? locations[0] : selectedLocation} onAdd={addLead} onClose={() => setAddingLead(false)} />}
     </div>
   );
 }
 
-function renderPage(path: string, view: string | null, query: string | null, stage: string | null, snapshot: Snapshot, loading: boolean, detail: LeadDetail | null, router: ReturnType<typeof useRouter>, action: DashboardAction, openAddLead: () => void, onReviewResolved: (id: string) => void, onTemplatePublished: (id: string, body: string, name: string) => void) {
+function renderPage(path: string, view: string | null, query: string | null, stage: string | null, chatId: string | null, snapshot: Snapshot, loading: boolean, detail: LeadDetail | null, router: ReturnType<typeof useRouter>, action: DashboardAction, openAddLead: () => void, onReviewResolved: (id: string) => void, onTemplatePublished: (id: string, body: string, name: string) => void) {
   const requestedLeadId = path.match(/^\/leads\/([0-9a-f-]+)/i)?.[1];
   // Narrowed to a non-null LeadDetail so the lead routes below typecheck; the
   // runtime behaviour is unchanged.
@@ -344,6 +346,7 @@ function renderPage(path: string, view: string | null, query: string | null, sta
   if (path === '/') return <HomePage snapshot={snapshot} loading={loading} />;
   if (path === '/leads' && loading && !snapshot.leads.length) return <><PageTitle title="Lead Pipeline" subtitle="Loading the latest pipeline…" /><SkeletonBoard /></>;
   if (path === '/leads') return <LeadsPage key={`${view}-${query}-${stage}`} snapshot={snapshot} mode={view === 'list' ? 'list' : 'board'} initialQuery={query ?? ''} initialStage={stage as LeadStage | null} router={router} onAddLead={openAddLead} action={action} />;
+  if (path === '/assistant') return <AssistantPage leads={snapshot.leads} initialChatId={chatId} />;
   if (path === '/appointments') return <AppointmentsPage snapshot={snapshot} loading={loading} />;
   if (path === '/review') return <ReviewPage snapshot={snapshot} action={action} onResolved={onReviewResolved} loading={loading} />;
   if (path === '/analytics') return <AnalyticsPage snapshot={snapshot} loading={loading} />;
@@ -1171,7 +1174,7 @@ function LeadHistoryPage({ detail }: { detail: LeadDetail }) {
 function ConversationTabs({ id, active }: { id:string; active:'sms'|'calls' }) { return <nav className="conversation-tabs"><Link className={active==='sms'?'active':''} href={`/leads/${id}/conversations/sms`}>● SMS</Link><Link className={active==='calls'?'active':''} href={`/leads/${id}/conversations/calls`}>▤ Call transcripts</Link></nav>; }
 // A flagged lead shows why it was flagged: its next step is on hold until staff
 // act, so the reason is what the card has to say.
-function LeadCard({ lead, onOpen, dragging = false, onDragStart, onDragEnd }: { lead: Lead; onOpen:()=>void; dragging?: boolean; onDragStart?: ()=>void; onDragEnd?: ()=>void }) { const meta=statusMeta[lead.stage]; return <button className={`lead-card ${dragging ? 'is-dragging' : ''}`} type="button" draggable={Boolean(onDragStart)} onDragStart={onDragStart} onDragEnd={onDragEnd} onClick={onOpen}><strong>{lead.full_name}</strong><span className="location"><MapPinIcon />{lead.location ?? 'Not assigned'}</span><StatusBadge stage={lead.stage} paused={lead.cadence_state === 'paused'} />{lead.stage==='cadence'&&lead.cadence_state!=='paused'&&<span className="version">{lead.cadence_version_name ?? 'Cadence'} · {lead.cadence_progress ?? 0} of {lead.cadence_total ?? 0}</span>}{lead.stage === 'attention' && lead.review_reason ? <span className="next attention-reason">Reason: {lead.review_reason}</span> : <span className="next">{lead.stage === 'closed' || lead.stage === 'booked' ? 'Outcome' : 'Next'}: {lead.next_step ?? 'No planned action'}</span>}<span className="sr-only">{meta.label}</span></button>; }
+function LeadCard({ lead, onOpen, dragging = false, onDragStart, onDragEnd }: { lead: Lead; onOpen:()=>void; dragging?: boolean; onDragStart?: ()=>void; onDragEnd?: ()=>void }) { const meta=statusMeta[lead.stage]; return <button className={`lead-card ${dragging ? 'is-dragging' : ''}`} type="button" draggable onDragStart={(event) => { setLeadDragData(event, lead.id); onDragStart?.(); }} onDragEnd={onDragEnd} onClick={onOpen}><strong>{lead.full_name}</strong><span className="location"><MapPinIcon />{lead.location ?? 'Not assigned'}</span><StatusBadge stage={lead.stage} paused={lead.cadence_state === 'paused'} />{lead.stage==='cadence'&&lead.cadence_state!=='paused'&&<span className="version">{lead.cadence_version_name ?? 'Cadence'} · {lead.cadence_progress ?? 0} of {lead.cadence_total ?? 0}</span>}{lead.stage === 'attention' && lead.review_reason ? <span className="next attention-reason">Reason: {lead.review_reason}</span> : <span className="next">{lead.stage === 'closed' || lead.stage === 'booked' ? 'Outcome' : 'Next'}: {lead.next_step ?? 'No planned action'}</span>}<span className="sr-only">{meta.label}</span></button>; }
 function StatusTiles({ counts, loading = false }: { counts: Record<LeadStage,number>; loading?: boolean }) { return <section className="status-tiles" aria-busy={loading}>{(['new','cadence','attention','booked','closed'] as LeadStage[]).map((stage)=><Link className={stage} href={`/leads?stage=${stage}`} key={stage}><StatusGlyph stage={stage} size="large" /><div><small>{statusMeta[stage].label}</small><strong>{loading ? "—" : counts[stage]}</strong></div></Link>)}</section>; }
 function StatusBadge({ stage, paused = false }: { stage: LeadStage; paused?: boolean }) {
   if (paused) return <span className="status-pill paused"><PauseIcon />Paused</span>;

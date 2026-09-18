@@ -5,7 +5,7 @@ const ALLOWED_METHODS = new Set(['GET', 'POST', 'PATCH', 'PUT', 'DELETE']);
 // Every backend route the browser may reach, listed explicitly. A path missing
 // from here is rejected with "dashboard path not allowed", so this must be
 // updated whenever a new dashboard endpoint is added.
-const ALLOWED_PATH = /^(snapshot|leads(?:\/[0-9a-f-]+(?:\/(?:cadence|cadence-mode|contact-rules|stage|sms|outreach-events\/\d+|message-overrides\/\d+))?)?|review\/[0-9a-f-]+\/resolve|cadence-versions(?:\/\d+(?:\/(?:activate|name|permanent))?)?|cadence-steps\/\d+|message-templates(?:\/\d+)?)$/i;
+const ALLOWED_PATH = /^(snapshot|leads(?:\/[0-9a-f-]+(?:\/(?:cadence|cadence-mode|contact-rules|stage|sms|outreach-events\/\d+|message-overrides\/\d+))?)?|review\/[0-9a-f-]+\/resolve|cadence-versions(?:\/\d+(?:\/(?:activate|name|permanent))?)?|cadence-steps\/\d+|message-templates(?:\/\d+)?|assistant(?:\/stream)?)$/i;
 
 async function proxy(request: NextRequest, context: { params: Promise<{ path?: string[] }> }) {
   if (!ALLOWED_METHODS.has(request.method)) {
@@ -39,7 +39,8 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path?: s
   }
 
   const length = Number(request.headers.get('content-length') ?? 0);
-  if (length > 20_000) {
+  // The assistant carries up to 20k characters of conversation; the backend caps it there too.
+  if (length > (relativePath.startsWith('assistant') ? 64_000 : 20_000)) {
     return NextResponse.json({ detail: 'request too large' }, { status: 413 });
   }
 
