@@ -75,6 +75,49 @@ export async function askAssistant(
 const APP_PROMPTS = ['How does the outreach cadence work on this dashboard?', 'What does the Needs Attention column on the Leads page mean?', 'How do I resend a booking link?'];
 const LEAD_PROMPTS = ['Which step is this lead on and when does the cadence end?', 'What did they say on the last answered call?', 'Did the booking link text deliver?'];
 
+// The model answers in light Markdown (bold, lists). Enough of it is rendered
+// here for emphasis and structure; anything else stays as typed text.
+const INLINE = /(\*\*[^*]+\*\*|`[^`]+`|\*[^*\n]+\*)/g;
+function inline(text: string, key: number): ReactNode {
+  const parts = text.split(INLINE).filter(Boolean);
+  return <span key={key}>{parts.map((part, index) => {
+    if (part.startsWith('**') && part.endsWith('**')) return <strong key={index}>{part.slice(2, -2)}</strong>;
+    if (part.startsWith('`') && part.endsWith('`')) return <code key={index}>{part.slice(1, -1)}</code>;
+    if (part.startsWith('*') && part.endsWith('*') && part.length > 2) return <em key={index}>{part.slice(1, -1)}</em>;
+    return part;
+  })}</span>;
+}
+
+export function RichText({ text }: { text: string }) {
+  const blocks: ReactNode[] = [];
+  let list: { ordered: boolean; items: string[] } | null = null;
+  const flush = () => {
+    if (!list) return;
+    const items = list.items.map((item, index) => <li key={index}>{inline(item, index)}</li>);
+    blocks.push(list.ordered ? <ol key={blocks.length}>{items}</ol> : <ul key={blocks.length}>{items}</ul>);
+    list = null;
+  };
+  for (const raw of text.split('\n')) {
+    const line = raw.trimEnd();
+    const bullet = line.match(/^\s*[-*•]\s+(.*)$/);
+    const number = line.match(/^\s*\d+[.)]\s+(.*)$/);
+    if (bullet || number) {
+      const ordered = Boolean(number);
+      if (!list || list.ordered !== ordered) { flush(); list = { ordered, items: [] }; }
+      list.items.push((bullet ?? number)![1]);
+      continue;
+    }
+    flush();
+    if (!line.trim()) continue;
+    const heading = line.match(/^#{1,3}\s+(.*)$/);
+    blocks.push(heading
+      ? <strong key={blocks.length} className="rt-heading">{inline(heading[1], 0)}</strong>
+      : <p key={blocks.length}>{inline(line, 0)}</p>);
+  }
+  flush();
+  return <>{blocks}</>;
+}
+
 function SparkIcon() {
   return <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" aria-hidden="true"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z" /><path d="M19 17l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7z" /></svg>;
 }
@@ -146,7 +189,7 @@ export function AssistantChat({ chat, leads, currentPath, onChange, compact = fa
         <div className="assistant-prompts">{prompts.map((prompt) => <button type="button" key={prompt} onClick={() => void send(prompt)}>{prompt}</button>)}</div>
       </div>}
       {chat.messages.map((message, index) => <div className={`assistant-message ${message.role} ${message.error ? 'error' : ''}`} key={index}>
-        {message.content || (busy && index === chat.messages.length - 1 ? <span className="assistant-typing"><i /><i /><i /></span> : '')}
+        {message.content ? (message.role === 'assistant' && !message.error ? <RichText text={message.content} /> : message.content) : (busy && index === chat.messages.length - 1 ? <span className="assistant-typing"><i /><i /><i /></span> : '')}
         {message.role === 'assistant' && message.content && !message.error && chat.leadIds.length > 0 && index === chat.messages.length - 1 && !busy && <div className="assistant-links">{loaded.map((lead) => <Link key={lead.id} href={`/leads/${lead.id}/conversations/calls`} target={compact ? undefined : '_blank'}>Open {lead.full_name.split(' ')[0]}&rsquo;s transcripts →</Link>)}</div>}
       </div>)}
     </div>
