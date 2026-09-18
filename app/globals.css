@@ -850,3 +850,54 @@ button.assistant-logo:hover { box-shadow: 0 0 0 3px #0b50d033; }
 .assistant-picker-results button:disabled { opacity: .5; }
 .assistant-picker-results small { color: var(--muted); font-size: 12px; text-transform: capitalize; }
 @media (max-width: 900px) { .assistant-page { grid-template-columns: 1fr; } .assistant-history { order: 2; } }
+
+/* ---------- dark theme, second pass: light-only tints that tokens did not cover ---------- */
+[data-theme="dark"] { color-scheme: dark; }
+[data-theme="dark"] .page-heading h1, [data-theme="dark"] .lead-identity h1, [data-theme="dark"] .panel h2, [data-theme="dark"] .modal h2, [data-theme="dark"] h3 { color: var(--ink); }
+/* Per-stage washes: the light pastels read as grey bands on a dark ground. */
+[data-theme="dark"] .new { --wash: #16264a; }
+[data-theme="dark"] .cadence { --wash: #261f4d; }
+[data-theme="dark"] .attention { --wash: #3a2a10; }
+[data-theme="dark"] .booked { --wash: #10301f; }
+[data-theme="dark"] .closed { --wash: #232d42; --status: #a7b2c6; }
+[data-theme="dark"] .status-tiles > a { --wash: #16264a; }
+[data-theme="dark"] .pipeline-column > header { background: color-mix(in srgb, var(--wash), var(--paper) 45%); }
+[data-theme="dark"] .pipeline-column header small { background: var(--paper); }
+[data-theme="dark"] .status-pill, [data-theme="dark"] .version { border-color: color-mix(in srgb, var(--status), var(--paper) 55%); }
+[data-theme="dark"] .version { background: #261f4d; border-color: #4b3aa8; color: #b7a8ff; }
+[data-theme="dark"] .status-tiles .status-glyph { border-color: color-mix(in srgb, var(--status), var(--paper) 40%); }
+[data-theme="dark"] .status-tiles small { color: var(--ink-2); }
+[data-theme="dark"] .segmented a, [data-theme="dark"] .segmented button { color: var(--ink-2); }
+[data-theme="dark"] .secondary { border-color: var(--line); color: var(--ink); }
+[data-theme="dark"] .secondary:hover:not(:disabled) { border-color: var(--blue); background: var(--paper-2); }
+[data-theme="dark"] .next, [data-theme="dark"] .text-action { color: var(--blue); }
+[data-theme="dark"] .next.attention-reason { color: #f0b464; }
+[data-theme="dark"] th, [data-theme="dark"] .record-tabs a, [data-theme="dark"] .plan-mode-switch button { color: var(--muted); }
+[data-theme="dark"] tbody tr:hover, [data-theme="dark"] .cadence-event-table tbody tr:hover, [data-theme="dark"] .row-link:hover, [data-theme="dark"] .select-menu-options button:hover, [data-theme="dark"] .select-menu-options button.active { background: var(--paper-2); }
+[data-theme="dark"] .top-actions .location-control > svg, [data-theme="dark"] .top-actions .location-control > .select-menu-trigger > svg:first-child, [data-theme="dark"] .template-item > span:first-child, [data-theme="dark"] .select-check { color: var(--blue); }
+[data-theme="dark"] .provider-icon, [data-theme="dark"] .admin-card > b { background: var(--soft-blue); }
+[data-theme="dark"] .provider-icon.twilio { background: #3a1a17; }
+[data-theme="dark"] .provider-icon.stride { background: #261f4d; }
+[data-theme="dark"] .provider-icon.keap { background: #10301f; }
+[data-theme="dark"] .alert.warning { border-color: #5a4a1e; background: #3a2a10; }
+[data-theme="dark"] .alert.success { border-color: #1f5a3a; background: #10301f; }
+[data-theme="dark"] .event { background: #16264a; color: #9dbcf5; }
+[data-theme="dark"] .event.green { background: #10301f; color: #7fd4a5; }
+[data-theme="dark"] .event.purple { background: #261f4d; color: #b7a8ff; }
+[data-theme="dark"] .review-item.selected { background: #3a2a10; }
+[data-theme="dark"] .metric > i { background: var(--paper-2); }
+[data-theme="dark"] .version-tabs button.selected { background: var(--soft-blue); }
+[data-theme="dark"] .deleted-versions, [data-theme="dark"] .plan-step-nav { background: var(--paper-2); }
+[data-theme="dark"] .deleted-versions > header > span, [data-theme="dark"] .plan-step-nav > header > span { background: var(--line); color: var(--ink-2); }
+[data-theme="dark"] .deleted-version-list article:hover, [data-theme="dark"] .deleted-version-list article.selected { background: var(--soft-blue); border-color: var(--blue); }
+[data-theme="dark"] .plan-mode-switch button.selected { background: var(--soft-blue); color: var(--blue); box-shadow: none; }
+[data-theme="dark"] .plan-step-detail .enabled-check, [data-theme="dark"] .step-fields label, [data-theme="dark"] .step-select-field, [data-theme="dark"] .step-message-toolbar > label { color: var(--ink-2); }
+[data-theme="dark"] .danger-button, [data-theme="dark"] .permanent-delete, [data-theme="dark"] .icon-button.danger { color: #f3887e; border-color: #6b2d27; }
+[data-theme="dark"] .danger-button:hover:not(:disabled), [data-theme="dark"] .permanent-delete:hover:not(:disabled) { background: #3a1a17; border-color: #a04a42; }
+[data-theme="dark"] .check-list { color: #7fd4a5; }
+[data-theme="dark"] .filter-chips button { color: var(--ink); }
+[data-theme="dark"] .message p { background: var(--paper-2); }
+[data-theme="dark"] .message.outbound p { background: var(--blue); }
+[data-theme="dark"] .toast { background: #0f4b30; }
+[data-theme="dark"] .drop-target { background: var(--soft-blue); }
+[data-theme="dark"] .client-logo { box-shadow: 0 0 0 1px var(--line); }
