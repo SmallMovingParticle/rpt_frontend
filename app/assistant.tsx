@@ -70,7 +70,9 @@ export async function askAssistant(
   }
 }
 
-const APP_PROMPTS = ['What is a cadence and how many days does it run?', 'What does Needs Attention mean?', 'What happens when a patient asks for the booking link?'];
+// With no lead loaded the backend only answers questions it recognises as being
+// about the dashboard itself (keyword gate), so these are phrased to match.
+const APP_PROMPTS = ['How does the outreach cadence work on this dashboard?', 'What does the Needs Attention column on the Leads page mean?', 'How do I resend a booking link?'];
 const LEAD_PROMPTS = ['Which step is this lead on and when does the cadence end?', 'What did they say on the last answered call?', 'Did the booking link text deliver?'];
 
 function SparkIcon() {
