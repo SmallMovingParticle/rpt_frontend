@@ -1097,7 +1097,7 @@ function CadenceRunCard({ run, index, total, pauses, onReschedule }: {
               <span className="run-step-chan"><CadenceChannelIcon channel={String(event.channel)} />{event.channel === 'call' ? 'Call' : 'Text'}</span>
               <span className={'run-step-result ' + result.tone}>{result.label}</span>
             </span>
-            <span className="run-step-time">{event.executed_at ? time(String(event.executed_at)) : 'due ' + time(String(event.scheduled_for))}</span>
+            <span className="run-step-time">{event.executed_at ? stamp(String(event.executed_at)) : 'due ' + stamp(String(event.scheduled_for))}</span>
             {onReschedule && event.status === 'planned'
               && <button className="text-action" type="button" onClick={() => onReschedule(event)}>Edit</button>}
           </div>
@@ -1238,6 +1238,8 @@ const CLINIC_TZ_LABEL = 'PT';
 function time(value:string|null|undefined){if(!value)return'—';const parsed=new Date(value);return Number.isNaN(parsed.valueOf())?'—':`${parsed.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',timeZone:CLINIC_TZ})} ${CLINIC_TZ_LABEL}`;}
 function date(value:string){const parsed=new Date(value);return Number.isNaN(parsed.valueOf())?'—':`${parsed.toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit',timeZone:CLINIC_TZ})} ${CLINIC_TZ_LABEL}`;}
 function clinicDateKey(value:Date|string){const parsed=typeof value==='string'?new Date(value):value;return Number.isNaN(parsed.valueOf())?'':parsed.toLocaleDateString('en-CA',{timeZone:CLINIC_TZ});}
+// A step due on another day must say which day; time alone read as "today".
+function stamp(value:string|null|undefined){return !value?'—':isToday(value)?time(value):date(value);}
 function isToday(value:string){const key=clinicDateKey(value);return key!==''&&key===clinicDateKey(new Date());}
 
 function relative(value:string|null|undefined){return value?date(value):'Not contacted';}
