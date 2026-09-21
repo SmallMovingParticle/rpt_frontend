@@ -144,6 +144,10 @@ function toUsE164(raw: string): string | null {
   return local.length === 10 ? `+1${local}` : null;
 }
 
+function PencilIcon() {
+  return <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 20h4l10-10a2.8 2.8 0 0 0-4-4L4 16z" /><path d="M13.5 6.5l4 4" /></svg>;
+}
+
 function TrashIcon() {
   return (
     <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
@@ -883,9 +887,10 @@ function LeadFrame({ detail, tab, action, children }: { detail: LeadDetail; tab:
   // Count only the current cadence run: a restarted lead keeps its earlier
   // events, and including them read as "12 of 16" on an eight-step cadence.
   const currentRun = splitCadenceRuns(detail.events).at(-1) ?? [];
-  const progress = currentRun.filter((event) => event.status !== 'planned').length;
+  const progress = currentRun.filter((event) => event.executed_at).length;
   const total = currentRun.length;
   const [busy,setBusy] = useState(false);
+  const [editing,setEditing] = useState(false);
   const cadencePaused = lead.cadence_state === 'paused';
   const cadenceOver = stage === 'closed' || stage === 'booked';
   async function toggleCadence(){ setBusy(true); try { await action(`leads/${id}/cadence`,'POST',{action: cadencePaused ? 'resume':'pause'}); } finally {setBusy(false);} }
@@ -901,7 +906,7 @@ This removes the lead and everything attached to it - cadence schedule, calls, t
     if (await action(`leads/${id}`,'DELETE')) router.push('/leads');
     else setDeleting(false);
   }
-  return <><div className="breadcrumbs"><Link href="/leads">Lead Pipeline</Link><span>/</span><span>{String(lead.display_id)}</span><span>/</span><strong>{lead.full_name}</strong></div><section className="lead-header"><div className="lead-avatar">{initials(lead.full_name)}</div><div className="lead-identity"><h1>{lead.full_name}</h1><span>☎ {phone}</span></div><StatusBadge stage={stage} paused={cadencePaused} />{total > 0 && !cadenceOver && <span className="version">{String(lead.cadence_version_name ?? detail.cadence_version?.name ?? 'Cadence')} · {progress} of {total}</span>}<span className="location"><MapPinIcon />{String(lead.location ?? 'Not assigned')}</span><div className="record-actions">{!cadenceOver && <button className="secondary icon-label" disabled={busy} onClick={toggleCadence} title={cadencePaused ? 'Resume cadence' : 'Pause cadence'}>{cadencePaused ? <PlayIcon /> : <PauseIcon />}{cadencePaused ? 'Resume cadence':'Pause cadence'}</button>}<Link className="primary icon-label" href={`/leads/${id}/conversations/sms`}><EnvelopeIcon />Send SMS</Link><button className="danger-button icon-label" type="button" disabled={busy || deleting} onClick={removeLead} title="Delete lead" aria-label="Delete lead"><TrashIcon />{deleting ? 'Deleting…' : 'Delete lead'}</button></div></section><nav className="record-tabs">{[['overview','Overview',`/leads/${id}`],['conversations','Conversations',`/leads/${id}/conversations/sms`],['cadence','Cadence',`/leads/${id}/cadence`],['appointments','Appointments',`/leads/${id}/appointments`],['history','History',`/leads/${id}/history`]].map(([key,label,href])=><Link className={tab===key?'active':''} href={href} key={key}>{label}</Link>)}</nav>{stage === 'attention' && Boolean(lead.review_reason) && <Alert tone="warning"><strong>Needs attention:</strong> {String(lead.review_reason)}</Alert>}{children}</>;
+  return <><div className="breadcrumbs"><Link href="/leads">Lead Pipeline</Link><span>/</span><span>{String(lead.display_id)}</span><span>/</span><strong>{lead.full_name}</strong></div><section className="lead-header"><div className="lead-avatar">{initials(lead.full_name)}</div><div className="lead-identity"><h1>{lead.full_name}</h1><span>☎ {phone}</span></div><StatusBadge stage={stage} paused={cadencePaused} />{total > 0 && !cadenceOver && <span className="version">{String(lead.cadence_version_name ?? detail.cadence_version?.name ?? 'Cadence')} · {progress} of {total}</span>}<span className="location"><MapPinIcon />{String(lead.location ?? 'Not assigned')}</span><div className="record-actions"><button className="secondary icon-label" type="button" onClick={() => setEditing(true)} title="Edit lead details"><PencilIcon />Edit</button>{!cadenceOver && <button className="secondary icon-label" disabled={busy} onClick={toggleCadence} title={cadencePaused ? 'Resume cadence' : 'Pause cadence'}>{cadencePaused ? <PlayIcon /> : <PauseIcon />}{cadencePaused ? 'Resume cadence':'Pause cadence'}</button>}<Link className="primary icon-label" href={`/leads/${id}/conversations/sms`}><EnvelopeIcon />Send SMS</Link><button className="danger-button icon-label" type="button" disabled={busy || deleting} onClick={removeLead} title="Delete lead" aria-label="Delete lead"><TrashIcon />{deleting ? 'Deleting…' : 'Delete lead'}</button></div></section><nav className="record-tabs">{[['overview','Overview',`/leads/${id}`],['conversations','Conversations',`/leads/${id}/conversations/sms`],['cadence','Cadence',`/leads/${id}/cadence`],['appointments','Appointments',`/leads/${id}/appointments`],['history','History',`/leads/${id}/history`]].map(([key,label,href])=><Link className={tab===key?'active':''} href={href} key={key}>{label}</Link>)}</nav>{stage === 'attention' && Boolean(lead.review_reason) && <Alert tone="warning"><strong>Needs attention:</strong> {String(lead.review_reason)}</Alert>}{editing && <EditLeadDialog detail={detail} action={action} onClose={() => setEditing(false)} />}{children}</>;
 }
 
 function LeadOverview({ detail }: { detail: LeadDetail }) {
@@ -1008,9 +1013,9 @@ function runTallies(run: RunEvent[]) {
   };
 }
 
-function stepResult(event: RunEvent): { tone: string; label: string } {
+function stepResult(event: RunEvent, restarted = true): { tone: string; label: string } {
   const status = String(event.status);
-  if (status === 'skipped') return { tone: 'idle', label: 'Cancelled by restart' };
+  if (status === 'skipped') return { tone: 'idle', label: restarted ? 'Cancelled by restart' : 'Not needed · outreach ended' };
   if (status === 'planned') return { tone: 'idle', label: 'Upcoming' };
   if (status === 'attempted' || status === 'in_flight') return { tone: 'warn', label: 'Awaiting result' };
   if (event.channel === 'sms') {
@@ -1020,6 +1025,7 @@ function stepResult(event: RunEvent): { tone: string; label: string } {
   }
   const outcome = String(event.outcome ?? '');
   if (!outcome) return { tone: 'warn', label: 'No outcome recorded' };
+  if (outcome === 'booking_link') return { tone: 'ok', label: 'Booking link requested' };
   if (outcome === 'manual') return { tone: 'warn', label: 'Answered · no outcome recorded' };
   return { tone: outcome === 'booked' ? 'ok' : 'plain', label: humanize(outcome) };
 }
@@ -1043,7 +1049,7 @@ function CadenceRunCard({ run, index, total, pauses, onReschedule }: {
   const cancelled = run.filter((event) => event.status === 'skipped');
 
   const label = tally.planned > 0 ? 'In progress'
-    : tally.cancelled > 0 ? 'Cut short after ' + tally.ran + ' step' + (tally.ran === 1 ? '' : 's')
+    : tally.cancelled > 0 ? (isCurrent ? 'Ended after ' : 'Cut short after ') + tally.ran + ' step' + (tally.ran === 1 ? '' : 's')
     : 'Ran in full';
   const tone = tally.cancelled > 0 || tally.planned > 0 ? 'warn' : 'ok';
 
@@ -1079,14 +1085,14 @@ function CadenceRunCard({ run, index, total, pauses, onReschedule }: {
         {tally.calls > 0 && <span className="run-tally"><i className="dot ok" />{tally.calls} call{tally.calls === 1 ? '' : 's'}</span>}
         {tally.textsSent > 0 && <span className="run-tally"><i className="dot ok" />{tally.textsSent} text{tally.textsSent === 1 ? '' : 's'}</span>}
         {tally.textsBlocked > 0 && <span className="run-tally"><i className="dot stop" />{tally.textsBlocked} blocked</span>}
-        {tally.cancelled > 0 && <span className="run-tally"><i className="dot idle" />{tally.cancelled} not sent</span>}
+        {tally.cancelled > 0 && <span className="run-tally"><i className="dot idle" />{tally.cancelled} {isCurrent ? 'not needed' : 'cancelled'}</span>}
         {tally.planned > 0 && <span className="run-tally"><i className="dot idle" />{tally.planned} to go</span>}
       </span>
     </summary>
 
     <div className="run-steps">
       {shown.map((event, position) => {
-        const result = stepResult(event);
+        const result = stepResult(event, !isCurrent);
         const pause = pauseBefore(event);
         return <div key={String(event.id)}>
           {pause && <p className="run-interrupt">Paused {time(pause.paused)} → resumed {time(pause.resumed)} · overdue steps then ran together</p>}
@@ -1106,7 +1112,7 @@ function CadenceRunCard({ run, index, total, pauses, onReschedule }: {
       {cancelled.length > 0 && <div className="run-step idle">
         <span className="run-step-n">{shown.length + 1}{cancelled.length > 1 ? '–' + (shown.length + cancelled.length) : ''}</span>
         <span className="run-step-day">{cancelled.length} step{cancelled.length === 1 ? '' : 's'}</span>
-        <span className="run-step-what"><span className="run-step-result idle">Cancelled by restart</span></span>
+        <span className="run-step-what"><span className="run-step-result idle">{isCurrent ? 'Not needed · outreach ended' : 'Cancelled by restart'}</span></span>
         <span className="run-step-time">—</span>
       </div>}
     </div>
@@ -1269,6 +1275,65 @@ function filterSnapshot(snapshot: Snapshot, location: string): Snapshot {
     appointments: snapshot.appointments.filter((appointment) => String(appointment.location ?? '') === location),
     system: { ...snapshot.system, review_queue: counts.attention },
   };
+}
+
+function EditLeadDialog({ detail, action, onClose }: {
+  detail: LeadDetail;
+  action: DashboardAction;
+  onClose: () => void;
+}) {
+  const lead = detail.lead as Record<string, unknown>;
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [leadType, setLeadType] = useState(String(lead.lead_type ?? 'Physical Therapy'));
+  const [leadLocation, setLeadLocation] = useState(String(lead.location ?? locations[0]));
+  const [leadOwner, setLeadOwner] = useState(String(lead.owner ?? owners[0]));
+  useEffect(() => {
+    function closeOnEscape(event: KeyboardEvent) { if (event.key === 'Escape') onClose(); }
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [onClose]);
+  const fullName = String(lead.full_name ?? '').trim().split(/\s+/);
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (saving) return;
+    const data = new FormData(event.currentTarget);
+    setSaving(true);
+    setError('');
+    const result = await action(`leads/${String(lead.id)}`, 'PATCH', {
+      first_name: String(data.get('first_name') ?? '').trim(),
+      last_name: String(data.get('last_name') ?? '').trim(),
+      email: String(data.get('email') ?? '').trim() || null,
+      date_of_birth: String(data.get('date_of_birth') ?? ''),
+      referred_by: String(data.get('referred_by') ?? '').trim() || null,
+      lead_type: leadType,
+      location: leadLocation,
+      owner: leadOwner,
+    });
+    setSaving(false);
+    if (!result) { setError('The changes could not be saved.'); return; }
+    onClose();
+  }
+  return <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+    <section className="modal" role="dialog" aria-modal="true" aria-labelledby="edit-lead-title">
+      <header><div><h2 id="edit-lead-title">Edit lead</h2><p>Correct this patient&rsquo;s details. The phone number identifies them and cannot change.</p></div>
+        <button className="close-button" type="button" onClick={onClose} aria-label="Close edit lead dialog">×</button></header>
+      <form onSubmit={submit}>
+        <div className="form-grid">
+          <label>First name<input name="first_name" defaultValue={String(lead.first_name ?? fullName[0] ?? '')} autoFocus required /></label>
+          <label>Last name<input name="last_name" defaultValue={String(lead.last_name ?? fullName.slice(1).join(' '))} required /></label>
+          <label>Phone<input name="phone" value={String(lead.phone_e164 ?? '')} readOnly disabled /><small className="field-hint">Used to match this patient everywhere. Add a new lead if the number changed.</small></label>
+          <label>Email<input name="email" type="email" defaultValue={String(lead.email ?? '')} placeholder="name@example.com" /></label>
+          <label>Date of birth<input name="date_of_birth" type="date" defaultValue={String(lead.date_of_birth ?? '')} required /></label>
+          <label>Who referred this lead?<input name="referred_by" defaultValue={String(lead.referred_by ?? '')} placeholder="Name or organization" /></label>
+          <div className="form-select-field form-field-full"><span>Lead type</span><SelectMenu name="lead_type" ariaLabel="Lead type" value={leadType} onChange={setLeadType} options={[...new Set([leadType, 'Physical Therapy', 'Wellness'])].map((item) => ({ value: item, label: item }))} /></div>
+          <div className="form-select-field"><span>Location</span><SelectMenu name="location" ariaLabel="Lead location" value={leadLocation} onChange={setLeadLocation} options={locations.map((item) => ({ value: item, label: item }))} /></div>
+          <div className="form-select-field"><span>Owner</span><SelectMenu name="owner" ariaLabel="Lead owner" value={leadOwner} onChange={setLeadOwner} options={[...new Set([leadOwner, ...owners])].map((item) => ({ value: item, label: item }))} /></div>
+        </div>
+        {error && <p className="field-error">{error}</p>}
+        <footer><button className="secondary" type="button" onClick={onClose} disabled={saving}>Cancel</button><button className="primary" type="submit" disabled={saving}>{saving ? 'Saving…' : 'Save changes'}</button></footer>
+      </form>
+    </section></div>;
 }
 
 function AddLeadDialog({ defaultLocation, onAdd, onClose }: { defaultLocation: string; onAdd: (lead: LeadCreateInput) => Promise<boolean>; onClose: () => void }) {
