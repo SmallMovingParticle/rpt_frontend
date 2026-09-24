@@ -11,7 +11,8 @@
     "build:vercel": "next build",
     "start": "vinext start",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test:display": "node --experimental-strip-types --test app/display.test.ts"
   },
   "dependencies": {
     "next": "16.3.3",

@@ -3,6 +3,7 @@
 import { DragEvent, FormEvent, KeyboardEvent, ReactNode, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { Lead } from './dashboard-data';
+import { displayEnum } from './display';
 
 // The backend assistant only ever sees leads the staff member has explicitly
 // loaded (at most three), so loading a lead is the first thing the UI does.
@@ -121,6 +122,14 @@ export function RichText({ text }: { text: string }) {
 function SparkIcon() {
   return <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" aria-hidden="true"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z" /><path d="M19 17l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7z" /></svg>;
 }
+function ControlIcon({ name }: { name: 'plus' | 'external' | 'close' | 'stop' | 'send' }) {
+  const path = name === 'plus' ? <path d="M12 5v14M5 12h14" />
+    : name === 'external' ? <><path d="M14 4h6v6M20 4l-9 9" /><path d="M18 13v6H5V6h6" /></>
+    : name === 'close' ? <path d="m6 6 12 12M18 6 6 18" />
+    : name === 'stop' ? <rect x="7" y="7" width="10" height="10" rx="1" />
+    : <path d="m5 12 14-7-4 14-3-6zM12 13l7-8" />;
+  return <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{path}</svg>;
+}
 
 export function AssistantChat({ chat, leads, currentPath, onChange, compact = false, header }: {
   chat: Chat; leads: Lead[]; currentPath: string; onChange: (chat: Chat) => void; compact?: boolean; header?: ReactNode;
@@ -180,7 +189,7 @@ export function AssistantChat({ chat, leads, currentPath, onChange, compact = fa
   return <div className={`assistant-chat ${compact ? 'compact' : ''} ${over ? 'is-over' : ''}`} onDragOver={(event) => { if (isLeadDrag(event)) { event.preventDefault(); setOver(true); } }} onDragLeave={() => setOver(false)} onDrop={drop}>
     {header}
     <div className="assistant-leads" aria-label="Loaded leads">
-      {loaded.map((lead) => <span className="assistant-lead" key={lead.id}><Link href={`/leads/${lead.id}`} target={compact ? undefined : '_blank'}>{lead.full_name}</Link><button type="button" aria-label={`Remove ${lead.full_name}`} onClick={() => removeLead(lead.id)}>×</button></span>)}
+      {loaded.map((lead) => <span className="assistant-lead" key={lead.id}><Link href={`/leads/${lead.id}`} target={compact ? undefined : '_blank'}>{lead.full_name}</Link><button type="button" aria-label={`Remove ${lead.full_name}`} onClick={() => removeLead(lead.id)}><ControlIcon name="close" /></button></span>)}
       {!full && <span className="assistant-dropzone">{over ? 'Drop to load this lead' : loaded.length ? `Drag another lead here (${loaded.length} of ${MAX_LEADS})` : 'Drag a lead card here to ask about it'}</span>}
     </div>
     <div className="assistant-messages" ref={scroller}>
@@ -194,8 +203,8 @@ export function AssistantChat({ chat, leads, currentPath, onChange, compact = fa
       </div>)}
     </div>
     <form className="assistant-composer" onSubmit={submit}>
-      <textarea id={`assistant-input-${chat.id}`} value={draft} rows={1} maxLength={4000} placeholder={chat.leadIds.length ? 'Ask about this lead…' : 'Ask how the dashboard works, or drag a lead in…'} onChange={(event) => setDraft(event.target.value)} onKeyDown={key} disabled={busy} />
-      {busy ? <button type="button" className="assistant-send" aria-label="Stop" onClick={() => abort.current?.abort()}>■</button> : <button type="submit" className="assistant-send" aria-label="Send" disabled={!draft.trim()}>↑</button>}
+      <label className="sr-only" htmlFor={`assistant-input-${chat.id}`}>Message the Outreach Assistant</label><textarea id={`assistant-input-${chat.id}`} value={draft} rows={1} maxLength={4000} placeholder={chat.leadIds.length ? 'Ask about this lead…' : 'Ask how the dashboard works, or drag a lead in…'} onChange={(event) => setDraft(event.target.value)} onKeyDown={key} disabled={busy} />
+      {busy ? <button type="button" className="assistant-send" aria-label="Stop response" onClick={() => abort.current?.abort()}><ControlIcon name="stop" /></button> : <button type="submit" className="assistant-send" aria-label="Send message" disabled={!draft.trim()}><ControlIcon name="send" /></button>}
     </form>
     <p className="assistant-foot">Read-only. Answers come from this lead&rsquo;s records; nothing is changed or sent.</p>
   </div>;
@@ -232,13 +241,13 @@ export function AssistantDock({ leads, currentPath, currentLeadId }: { leads: Le
   return <>
     {open && <div className="assistant-pop" role="dialog" aria-label="Outreach Assistant">
       <AssistantChat chat={chat} leads={leads} currentPath={currentPath} onChange={setChat} compact header={<div className="assistant-head">
-        <button type="button" className="assistant-logo" title="Open the assistant in a new tab" onClick={openFullPage}><SparkIcon /></button>
+        <button type="button" className="assistant-logo" aria-label="Open the assistant in a new tab" title="Open the assistant in a new tab" onClick={openFullPage}><SparkIcon /></button>
         <div><strong>Outreach Assistant</strong><small>Reads live data · read-only</small></div>
         <div className="assistant-head-actions">
           {currentLeadId && !chat.leadIds.includes(currentLeadId) && chat.leadIds.length < MAX_LEADS && <button type="button" onClick={loadCurrent}>Load this lead</button>}
-          <button type="button" onClick={() => setChat(newChat())} title="New chat">＋</button>
-          <button type="button" onClick={openFullPage} title="Open in new tab">⧉</button>
-          <button type="button" onClick={() => setOpen(false)} title="Close">✕</button>
+          <button type="button" onClick={() => setChat(newChat())} title="New chat" aria-label="New chat"><ControlIcon name="plus" /></button>
+          <button type="button" onClick={openFullPage} title="Open in new tab" aria-label="Open in new tab"><ControlIcon name="external" /></button>
+          <button type="button" onClick={() => setOpen(false)} title="Close" aria-label="Close assistant"><ControlIcon name="close" /></button>
         </div>
       </div>} />
     </div>}
@@ -264,18 +273,19 @@ export function AssistantPage({ leads, initialChatId }: { leads: Lead[]; initial
   const active = chats.find((chat) => chat.id === activeId);
   function update(next: Chat) { setChats((current) => { const list = [next, ...current.filter((chat) => chat.id !== next.id)]; saveChats(list); return list; }); }
   function create() { const chat = newChat(); setChats((current) => { const list = [chat, ...current]; saveChats(list); return list; }); setActiveId(chat.id); }
-  function remove(id: string) { setChats((current) => { const list = current.filter((chat) => chat.id !== id); saveChats(list); if (id === activeId) setActiveId(list[0]?.id ?? ''); return list.length ? list : [newChat()]; }); }
+  function remove(id: string) { setChats((current) => { const remaining = current.filter((chat) => chat.id !== id); const list = remaining.length ? remaining : [newChat()]; saveChats(list); if (id === activeId) setActiveId(list[0].id); return list; }); }
   const matches = search.trim() ? leads.filter((lead) => lead.full_name.toLowerCase().includes(search.trim().toLowerCase())).slice(0, 8) : [];
   if (!active) return null;
   return <div className="assistant-page">
+    <h1 className="sr-only">Outreach Assistant</h1>
     <aside className="assistant-history">
-      <button type="button" className="primary" onClick={create}>＋ New chat</button>
-      <div className="assistant-history-list">{chats.map((chat) => <div className={`assistant-history-item ${chat.id === activeId ? 'selected' : ''}`} key={chat.id}><button type="button" onClick={() => setActiveId(chat.id)}><strong>{chat.title}</strong><small>{chat.leadIds.length ? `${chat.leadIds.length} lead${chat.leadIds.length > 1 ? 's' : ''} · ` : ''}{new Date(chat.updated).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</small></button><button type="button" aria-label="Delete chat" onClick={() => remove(chat.id)}>×</button></div>)}</div>
+      <button type="button" className="primary icon-label" onClick={create}><ControlIcon name="plus" />New chat</button>
+      <div className="assistant-history-list">{chats.map((chat) => <div className={`assistant-history-item ${chat.id === activeId ? 'selected' : ''}`} key={chat.id}><button type="button" aria-pressed={chat.id === activeId} onClick={() => setActiveId(chat.id)}><strong>{chat.title}</strong><small>{chat.leadIds.length ? `${chat.leadIds.length} lead${chat.leadIds.length > 1 ? 's' : ''} · ` : ''}{new Date(chat.updated).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</small></button><button type="button" aria-label={`Delete ${chat.title}`} onClick={() => remove(chat.id)}><ControlIcon name="close" /></button></div>)}</div>
     </aside>
     <section className="assistant-main">
       <div className="assistant-picker">
-        <input id="assistant-lead-search" value={search} placeholder={active.leadIds.length >= MAX_LEADS ? `Up to ${MAX_LEADS} leads per chat` : 'Add a lead by name…'} disabled={active.leadIds.length >= MAX_LEADS} onChange={(event) => setSearch(event.target.value)} />
-        {matches.length > 0 && <div className="assistant-picker-results">{matches.map((lead) => <button type="button" key={lead.id} disabled={active.leadIds.includes(lead.id)} onClick={() => { update(touch(active, { leadIds: [...active.leadIds, lead.id] })); setSearch(''); }}><strong>{lead.full_name}</strong><small>{lead.location ?? ''} · {lead.status.replaceAll('_', ' ')}</small></button>)}</div>}
+        <label className="sr-only" htmlFor="assistant-lead-search">Add a lead to this chat</label><input id="assistant-lead-search" value={search} placeholder={active.leadIds.length >= MAX_LEADS ? `Up to ${MAX_LEADS} leads per chat` : 'Add a lead by name…'} disabled={active.leadIds.length >= MAX_LEADS} onChange={(event) => setSearch(event.target.value)} />
+        {matches.length > 0 && <div className="assistant-picker-results">{matches.map((lead) => <button type="button" key={lead.id} disabled={active.leadIds.includes(lead.id)} onClick={() => { update(touch(active, { leadIds: [...active.leadIds, lead.id] })); setSearch(''); }}><strong>{lead.full_name}</strong><small>{lead.location ?? ''} · {displayEnum(lead.status)}</small></button>)}</div>}
       </div>
       <AssistantChat chat={active} leads={leads} currentPath="/assistant" onChange={update} header={<div className="assistant-head"><span className="assistant-logo" aria-hidden="true"><SparkIcon /></span><div><strong>Outreach Assistant</strong><small>Reads live data · read-only</small></div></div>} />
     </section>
