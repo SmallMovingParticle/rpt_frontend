@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { activityKind, clinicWallTimeToIso, displayEnum, sourceLabel, statusTone, timezoneLabel } from './display.ts';
+import { activityDescription, activityKind, clientErrorMessage, clinicWallTimeToIso, displayEnum, operationalMessage, sourceLabel, statusTone, timezoneLabel } from './display.ts';
 
 test('normalizes machine values without changing stored data', () => {
   for (const value of ['google_sheets', 'google-sheet', 'n8n_sheet', 'n8n_sheets', 'N8N Sheets']) assert.equal(sourceLabel(value), 'Google Sheets');
@@ -15,6 +15,20 @@ test('selects semantic activity icons and status tones', () => {
   assert.equal(statusTone('customer-did-not-answer'), 'warning');
   assert.equal(statusTone('undelivered'), 'error');
   assert.equal(statusTone('booked'), 'success');
+});
+
+test('replaces technical provider failures with client-safe messages', () => {
+  assert.equal(operationalMessage('dispatch failed: twilio returned HTTP 400'), 'Message was not sent. Review the phone number before trying again.');
+  assert.equal(operationalMessage('call outcome was not reported'), 'Call result could not be confirmed. Review it before continuing.');
+  assert.equal(activityDescription({ reason: 'stale Stride booking requires reconciliation', source: 'worker' }), 'Appointment status could not be confirmed. Review it before trying again.');
+  assert.equal(activityDescription({ reason: 'Replaced by Sheet lead 123 after phone number change' }), 'Contact details changed and need staff review.');
+  assert.equal(activityDescription({ reason: 'cadence started from google_sheets' }), 'Cadence started from Google Sheets');
+  assert.equal(clientErrorMessage('Postgres connection timeout', 'The lead could not be saved.'), 'The lead could not be saved.');
+  assert.equal(clientErrorMessage('TypeError: Failed to fetch', 'The update could not be completed.'), 'The update could not be completed.');
+  assert.equal(clientErrorMessage('Phone number is required.'), 'Phone number is required.');
+  assert.equal(sourceLabel('twilio'), 'Messaging');
+  assert.equal(sourceLabel('vapi'), 'Phone');
+  assert.equal(sourceLabel('keap'), 'Staff handoff');
 });
 
 test('converts valid Pacific wall time and rejects DST edge cases', () => {
