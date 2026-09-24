@@ -5,6 +5,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { FormEvent, ReactNode, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { CadenceStep, CadenceVersion, emptySnapshot, Lead, LeadCreateInput, LeadDetail, LeadStage, Snapshot } from './dashboard-data';
 import { AssistantDock, AssistantPage, ThemeToggle, setLeadDragData } from './assistant';
+import { activityKind, ActivityKind, clinicDateTimeValue, clinicWallTimeToIso, CLINIC_TZ, CLINIC_TZ_LABEL, displayEnum, sourceLabel, statusTone, timezoneLabel } from './display';
 
 const statusMeta: Record<LeadStage, { label: string }> = {
   new: { label: 'New' },
@@ -49,6 +50,29 @@ function EnvelopeIcon() {
     strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
     <rect x="3" y="5" width="18" height="14" rx="2" /><path d="m4 7 8 6 8-6" />
   </svg>;
+}
+function PhoneIcon({ size = 16 }: { size?: number }) {
+  return <svg viewBox="0 0 20 20" width={size} height={size} fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M5.3 3.3 7.6 3l1.2 3.4-1.5 1.2a11 11 0 0 0 5.1 5.1l1.2-1.5 3.4 1.2-.3 2.3a2.2 2.2 0 0 1-2.2 1.9C8.4 16.6 3.4 11.6 3.4 5.5a2.2 2.2 0 0 1 1.9-2.2Z" /></svg>;
+}
+function MessageIcon({ size = 16 }: { size?: number }) {
+  return <svg viewBox="0 0 20 20" width={size} height={size} fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.2 4.2h13.6v9.4H8l-3.7 2.2v-2.2H3.2V4.2Z" /></svg>;
+}
+function CalendarIcon({ size = 20 }: { size?: number }) {
+  return <svg viewBox="0 0 24 24" width={size} height={size} fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M3 10h18M8 3v4M16 3v4m-7 8 2 2 4-4" /></svg>;
+}
+function MobileMenuIcon({ open }: { open: boolean }) {
+  return <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">{open ? <path d="m6 6 12 12M18 6 6 18" /> : <path d="M5 7h14M5 12h14M5 17h14" />}</svg>;
+}
+
+function ModalShell({ labelId, className = '', onClose, children }: { labelId: string; className?: string; onClose: () => void; children: ReactNode }) {
+  const ref = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    const node = ref.current;
+    const opener = document.activeElement as HTMLElement | null;
+    node?.showModal();
+    return () => { node?.close(); opener?.focus(); };
+  }, []);
+  return <dialog ref={ref} className={`modal native-modal ${className}`} aria-labelledby={labelId} onCancel={(event) => { event.preventDefault(); onClose(); }} onClick={(event) => { if (event.target === ref.current) onClose(); }}>{children}</dialog>;
 }
 function MapPinIcon() {
   return <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor"
@@ -173,10 +197,11 @@ export function DashboardShell({ displayName, localPreview = false }: { displayN
   const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(true);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [compactViewport, setCompactViewport] = useState(false);
   const [snapshot, setSnapshot] = useState<Snapshot>(emptySnapshot);
   const [detail, setDetail] = useState<LeadDetail | null>(null);
-  const [live, setLive] = useState(false);
-  const [notice, setNotice] = useState('');
+  const [connection, setConnection] = useState<'loading' | 'live' | 'offline'>('loading');
+  const [notice, setNotice] = useState<{ message: string; tone: 'success' | 'error' } | null>(null);
   const [selectedLocation, setSelectedLocation] = useState('All Locations');
   const [globalQuery, setGlobalQuery] = useState('');
   const [addingLead, setAddingLead] = useState(false);
@@ -184,12 +209,19 @@ export function DashboardShell({ displayName, localPreview = false }: { displayN
   const leadId = pathname.match(/^\/leads\/([0-9a-f-]+)/i)?.[1];
 
   useEffect(() => {
+    const media = window.matchMedia('(max-width: 980px)');
+    const update = () => setCompactViewport(media.matches);
+    update(); media.addEventListener('change', update);
+    return () => media.removeEventListener('change', update);
+  }, []);
+
+  useEffect(() => {
     const controller = new AbortController();
     function refresh() {
       fetch('/api/dashboard/snapshot', { cache: 'no-store', signal: controller.signal })
         .then((response) => response.ok ? response.json() as Promise<Snapshot> : Promise.reject())
-        .then((data) => { setSnapshot(data); setLive(true); })
-        .catch(() => undefined);
+        .then((data) => { setSnapshot(data); setConnection('live'); })
+        .catch((error) => { if (error?.name !== 'AbortError') setConnection('offline'); });
     }
     refresh();
     const interval = window.setInterval(() => { if (!document.hidden) refresh(); }, 20000);
@@ -208,7 +240,7 @@ export function DashboardShell({ displayName, localPreview = false }: { displayN
           return response.ok ? response.json() as Promise<LeadDetail> : Promise.reject();
         })
         .then((data) => setDetail(data))
-        .catch(() => undefined);
+        .catch((error) => { if (error?.name !== 'AbortError' && error?.message !== 'lead not found') setConnection('offline'); });
     }
     refresh();
     const interval = window.setInterval(() => { if (!document.hidden) refresh(); }, 20000);
@@ -217,9 +249,9 @@ export function DashboardShell({ displayName, localPreview = false }: { displayN
     return () => { controller.abort(); window.clearInterval(interval); document.removeEventListener('visibilitychange', onVisible); };
   }, [leadId, router, reloadKey]);
 
-  function showNotice(message: string) {
-    setNotice(message);
-    window.setTimeout(() => setNotice(''), 3000);
+  function showNotice(message: string, tone: 'success' | 'error' = 'success') {
+    setNotice({ message, tone });
+    window.setTimeout(() => setNotice(null), 3000);
   }
 
   async function action(path: string, method: string, body?: unknown) {
@@ -229,7 +261,7 @@ export function DashboardShell({ displayName, localPreview = false }: { displayN
       });
       const data = await response.json().catch(() => ({})) as { detail?: string };
       if (!response.ok) {
-        if (localPreview && !live) {
+        if (localPreview && connection !== 'live') {
           showNotice('Saved in this local preview.');
           return {};
         }
@@ -239,11 +271,11 @@ export function DashboardShell({ displayName, localPreview = false }: { displayN
       setReloadKey((value) => value + 1);
       return data;
     } catch (error) {
-      if (localPreview && !live) {
+      if (localPreview && connection !== 'live') {
         showNotice('Saved in this local preview.');
         return {};
       }
-      showNotice(error instanceof Error ? error.message : 'The update could not be completed.');
+      showNotice(error instanceof Error ? error.message : 'The update could not be completed.', 'error');
       return null;
     }
   }
@@ -274,7 +306,7 @@ export function DashboardShell({ displayName, localPreview = false }: { displayN
       showNotice(`${lead.full_name} was saved with ${lead.is_test ? 'the 1-minute test cadence' : 'the outreach cadence'}.`);
       return true;
     } catch (error) {
-      showNotice(error instanceof Error ? error.message : 'The lead could not be created.');
+      showNotice(error instanceof Error ? error.message : 'The lead could not be created.', 'error');
       return false;
     }
   }
@@ -308,18 +340,28 @@ export function DashboardShell({ displayName, localPreview = false }: { displayN
     else setMenuOpen((current) => !current);
   }
 
+  async function signOut() {
+    try {
+      const response = await fetch('/api/auth/logout', { method: 'POST' });
+      if (!response.ok) throw new Error();
+      router.replace('/login');
+      router.refresh();
+    } catch { showNotice('Sign out failed. Try again.', 'error'); }
+  }
+
   const activeLabel = pathname === '/assistant' ? 'Outreach Assistant' : nav.find(([href]) => href === '/' ? pathname === '/' : pathname.startsWith(href))?.[2] ?? 'Lead Workspace';
+  const navigationOpen = compactViewport ? mobileMenuOpen : menuOpen;
   return (
     <div className={`app-shell ${menuOpen ? '' : 'is-collapsed'} ${mobileMenuOpen ? 'mobile-menu-open' : ''}`}>
       <aside className="sidebar">
         <div className="sidebar-header">
           <Link href="/" className="brand-mark" aria-label="Rausch Physical Therapy home"><span>R</span></Link>
           <button className="menu-button" type="button" onClick={toggleNavigation}
-            aria-label={menuOpen ? 'Collapse navigation' : 'Expand navigation'} title={menuOpen ? 'Collapse navigation' : 'Expand navigation'}>
-            <SidebarToggleIcon collapsed={!menuOpen} />
+            aria-label={compactViewport ? (navigationOpen ? 'Close navigation' : 'Open navigation') : (navigationOpen ? 'Collapse navigation' : 'Expand navigation')} title={compactViewport ? (navigationOpen ? 'Close navigation' : 'Open navigation') : (navigationOpen ? 'Collapse navigation' : 'Expand navigation')} aria-expanded={navigationOpen}>
+            <span className="desktop-toggle-icon"><SidebarToggleIcon collapsed={!menuOpen} /></span><span className="mobile-toggle-icon"><MobileMenuIcon open={mobileMenuOpen} /></span>
           </button>
         </div>
-        <nav aria-label="Primary navigation">{nav.map(([href, icon, label]) => <Link className={(href === '/' ? pathname === '/' : pathname.startsWith(href)) ? 'active' : ''} href={href} key={href} onClick={() => setMobileMenuOpen(false)}><b><NavIcon name={icon} /></b><span>{label}</span></Link>)}</nav>
+        <nav aria-label="Primary navigation">{nav.map(([href, icon, label]) => { const active = href === '/' ? pathname === '/' : pathname.startsWith(href); return <Link className={active ? 'active' : ''} aria-current={active ? 'page' : undefined} href={href} key={href} onClick={() => setMobileMenuOpen(false)}><b><NavIcon name={icon} /></b><span>{label}</span></Link>; })}</nav>
       </aside>
       {mobileMenuOpen && <button className="nav-scrim" type="button" aria-label="Close navigation menu" onClick={() => setMobileMenuOpen(false)} />}
       <div className="workspace">
@@ -328,14 +370,14 @@ export function DashboardShell({ displayName, localPreview = false }: { displayN
           <div className="product-name">{activeLabel}</div>
           <div className="top-actions">
             <SelectMenu className="location-control" ariaLabel="Filter dashboard by location" value={selectedLocation} onChange={setSelectedLocation} icon={<MapPinIcon />} options={['All Locations', ...locations].map((location) => ({ value: location, label: location }))} />
-            <form className="global-search" role="search" onSubmit={searchDashboard}><span aria-hidden="true">⌕</span><input aria-label="Global search" value={globalQuery} onChange={(event) => setGlobalQuery(event.target.value)} placeholder="Search leads, tasks, or appointments" /></form>
-            <ThemeToggle /><span className={`connection ${live ? 'live' : ''}`}><i />{live ? 'Connected' : 'Preview'}</span><button className="avatar" type="button" title={displayName}>{initials(displayName)}</button>
+            <form className="global-search" role="search" onSubmit={searchDashboard}><span aria-hidden="true">⌕</span><input aria-label="Search leads" value={globalQuery} onChange={(event) => setGlobalQuery(event.target.value)} placeholder="Search leads" /></form>
+            <ThemeToggle /><span className={`connection ${connection}`}><i />{connection === 'live' ? 'Connected' : localPreview ? 'Preview' : connection === 'loading' ? 'Connecting…' : 'Offline'}</span><details className="account-menu"><summary className="avatar" title={displayName} aria-label={`Account menu for ${displayName}`}>{initials(displayName)}</summary><div><strong>{displayName}</strong><button type="button" aria-label="Sign out" onClick={() => void signOut()}>Sign out</button></div></details>
           </div>
         </header>
-        <main className="content">{renderPage(pathname, search.get('view'), search.get('search'), search.get('stage'), search.get('chat'), visibleSnapshot, !live, detail, router, action, () => setAddingLead(true), resolveLeadReview, publishTemplate)}</main>
+        <main className="content">{connection === 'offline' && (!snapshot.leads.length || (leadId && !detail)) ? <OfflineState onRetry={() => { setConnection('loading'); setReloadKey((value) => value + 1); }} /> : renderPage(pathname, search.get('view'), search.get('search'), search.get('stage'), search.get('chat'), visibleSnapshot, connection === 'loading', detail, router, action, () => setAddingLead(true), resolveLeadReview, publishTemplate)}</main>
       </div>
       {pathname !== '/assistant' && <AssistantDock leads={snapshot.leads} currentPath={pathname} currentLeadId={leadId} />}
-      {notice && <div className="toast" role="status">✓ {notice}</div>}
+      {notice && <div className={`toast ${notice.tone}`} role={notice.tone === 'error' ? 'alert' : 'status'}>{notice.tone === 'error' ? '!' : '✓'} {notice.message}</div>}
       {addingLead && <AddLeadDialog defaultLocation={selectedLocation === 'All Locations' ? locations[0] : selectedLocation} onAdd={addLead} onClose={() => setAddingLead(false)} />}
     </div>
   );
@@ -371,9 +413,9 @@ function HomePage({ snapshot, loading }: { snapshot: Snapshot; loading: boolean 
   const work = snapshot.leads.filter((lead) => lead.stage !== 'closed' && lead.stage !== 'booked').slice(0, 5);
   return <><PageTitle title="Outreach Operations" subtitle="Good morning. Here is today’s operational picture." />
     {loading && !snapshot.leads.length ? <SkeletonTiles /> : <StatusTiles counts={snapshot.counts} loading={loading} />}
-    <div className="home-work"><Panel title="Today’s Work">{loading && !snapshot.leads.length ? <SkeletonRows rows={5} /> : <><DataTable heads={['Lead', 'Status', 'Next step', 'Due', 'Action']}>{work.map((lead) => <tr key={lead.id}><td><Link href={`/leads/${lead.id}`}>{lead.full_name}</Link></td><td><StatusBadge stage={lead.stage} paused={lead.cadence_state === 'paused'} /></td><td>{lead.next_step ?? '—'}</td><td>{time(lead.next_scheduled_for)}</td><td><Link className="text-action" href={`/leads/${lead.id}`}>Open →</Link></td></tr>)}</DataTable><div className="panel-action"><Link className="primary" href={work[0] ? `/leads/${work[0].id}` : '/leads'}>Start next task</Link></div></>}</Panel>
+    <div className="home-work"><Panel title="Today’s Work">{loading && !snapshot.leads.length ? <SkeletonRows rows={5} /> : work.length ? <><DataTable heads={['Lead', 'Status', 'Next step', 'Due', 'Action']}>{work.map((lead) => <tr key={lead.id}><td><Link href={`/leads/${lead.id}`}>{lead.full_name}</Link></td><td><StatusBadge stage={lead.stage} paused={lead.cadence_state === 'paused'} /></td><td>{lead.next_step ?? '—'}</td><td>{time(lead.next_scheduled_for)}</td><td><Link className="text-action" href={`/leads/${lead.id}`}>Open →</Link></td></tr>)}</DataTable><div className="panel-action"><Link className="primary" href={`/leads/${work[0].id}`}>Start next task</Link></div></> : <Empty title="Today’s work is clear" body="There are no active leads waiting for outreach." />}</Panel>
     </div>
-    <Panel title="Next Appointments"><div className="appointment-strip">{snapshot.appointments.slice(0, 3).map((item, index) => <div key={String(item.id ?? index)}><strong>{time(String(item.start_utc ?? ''))}</strong><span>{String(item.full_name ?? 'Scheduled lead')}</span><small>{String(item.location ?? 'Practice')}</small></div>)}</div></Panel></>;
+    <Panel title="Next Appointments">{loading && !snapshot.appointments.length ? <SkeletonRows rows={2} /> : snapshot.appointments.length ? <div className="appointment-strip">{snapshot.appointments.slice(0, 3).map((item, index) => <div key={String(item.id ?? index)}><strong>{time(String(item.start_utc ?? ''))}</strong><span>{String(item.full_name ?? 'Scheduled lead')}</span><small>{String(item.location ?? 'Practice')}</small></div>)}</div> : <Empty title="No upcoming appointments" body="Scheduled appointments will appear here." />}</Panel></>;
 }
 
 function Skeleton({ w = '100%', h = 14 }: { w?: string; h?: number }) {
@@ -485,16 +527,15 @@ The remaining schedule is discarded and a new cadence begins from today. They wi
   return <><PageTitle title="Lead Pipeline" subtitle="Select a lead to open their workspace." tools={<><div className="segmented" aria-label="Lead view"><Link className={mode === 'list' ? 'selected' : ''} href="/leads?view=list"><span className="view-icon">☷</span>List</Link><Link className={mode === 'board' ? 'selected' : ''} href="/leads"><span className="view-icon">▦</span>Board</Link></div><SelectMenu className="filter-control" ariaLabel="Filter leads by owner" value={owner} onChange={setOwner} options={['All Owners', ...availableOwners].map((item) => ({ value: item, label: item }))} /><label className="search-field"><span aria-hidden="true">⌕</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search leads" /></label><button className="primary" type="button" onClick={onAddLead}>Add Lead</button></>} />
     {initialStage && <div className="active-filter">Showing {statusMeta[initialStage].label} leads <Link href="/leads">Clear filter</Link></div>}
     {!leads.length ? <Panel><Empty title="No matching leads" body="Try another owner, location, or search term." /></Panel> : mode === 'board' ? <section className="pipeline">{(['new','cadence','attention','booked','closed'] as LeadStage[]).map((stage) => <article className={`pipeline-column ${stage} ${over === stage ? 'drop-target' : ''}`} key={stage} onDragOver={(event) => { event.preventDefault(); setOver(stage); }} onDragLeave={() => setOver((current) => current === stage ? null : current)} onDrop={(event) => { event.preventDefault(); void drop(stage); }}><header><StatusGlyph stage={stage} /><h2>{statusMeta[stage].label}</h2><small>{leads.filter((lead) => lead.stage === stage).length}</small></header><div className="lead-stack">{leads.filter((lead) => lead.stage === stage).map((lead) => <LeadCard lead={lead} key={lead.id} onOpen={() => router.push(`/leads/${lead.id}`)} dragging={dragging === lead.id} onDragStart={() => setDragging(lead.id)} onDragEnd={() => { setDragging(null); setOver(null); }} />)}{over === stage && dragging && <p className="drop-hint">{stage === 'new' ? 'Drop to restart outreach from day zero' : `Move to ${statusMeta[stage].label}`}</p>}</div></article>)}</section> :
-      <Panel><DataTable heads={['Lead', 'Status', 'Owner', 'Source', 'Next step', 'Last contact', '']} >{leads.map((lead) => <tr key={lead.id} className={`row-${lead.stage}`}><td><strong>{lead.full_name}</strong><small>{lead.display_id}</small></td><td><StatusBadge stage={lead.stage} paused={lead.cadence_state === 'paused'} /></td><td>{lead.owner ?? 'Unassigned'}</td><td>{lead.source}</td><td>{lead.next_step ?? 'No planned action'}</td><td>{relative(lead.last_contacted_at)}</td><td><Link className="row-link" href={`/leads/${lead.id}`} aria-label={`Open ${lead.full_name}`}>→</Link></td></tr>)}</DataTable></Panel>}</>;
+      <Panel><DataTable heads={['Lead', 'Status', 'Owner', 'Source', 'Next step', 'Last contact', '']} >{leads.map((lead) => <tr key={lead.id} className={`row-${lead.stage}`}><td><strong>{lead.full_name}</strong><small>{lead.display_id}</small></td><td><StatusBadge stage={lead.stage} paused={lead.cadence_state === 'paused'} /></td><td>{lead.owner ?? 'Unassigned'}</td><td>{sourceLabel(lead.source)}</td><td>{lead.next_step ?? 'No planned action'}</td><td>{relative(lead.last_contacted_at)}</td><td><Link className="row-link" href={`/leads/${lead.id}`} aria-label={`Open ${lead.full_name}`}>→</Link></td></tr>)}</DataTable></Panel>}</>;
 }
 
 function AppointmentsPage({ snapshot, loading }: { snapshot: Snapshot; loading: boolean }) {
   const [todayOnly, setTodayOnly] = useState(false);
-  const lead = snapshot.leads.find((item) => item.stage !== 'booked');
   const todayAppointments = snapshot.appointments.filter((appointment) => isToday(String(appointment.start_utc ?? '')));
   const appointments = todayOnly ? todayAppointments : snapshot.appointments;
-  return <><PageTitle title="Appointments" subtitle={`${appointments.length} ${todayOnly ? 'scheduled today' : 'scheduled records'} · live Stride availability with protected booking controls.`} tools={<><button className={todayOnly ? 'primary' : 'secondary'} type="button" aria-pressed={todayOnly} onClick={() => setTodayOnly((current) => !current)}>{todayOnly ? 'Show all' : 'Today'}</button>{lead ? <Link className="primary" href={`/leads/${lead.id}/appointments`}>Check availability</Link> : <button className="primary" disabled>Check availability</button>}</>} />
-    <Alert tone="warning">Availability is live. New appointment writes remain gated until the Stride appointment type is verified.</Alert>
+  return <><PageTitle title="Appointments" subtitle={`${appointments.length} ${todayOnly ? 'scheduled today' : 'scheduled records'} from the connected scheduling system.`} tools={<button className={todayOnly ? 'primary' : 'secondary'} type="button" aria-pressed={todayOnly} onClick={() => setTodayOnly((current) => !current)}>{todayOnly ? 'Show all' : 'Today'}</button>} />
+    <Alert>Availability checking will appear after the dashboard booking endpoint is enabled.</Alert>
     <Panel title={todayOnly ? 'Today’s appointments' : 'Scheduled appointments'}>{appointments.length ? <div className="today-appointments">{appointments.map((appointment, index) => <article key={String(appointment.id ?? index)}><time>{date(String(appointment.start_utc ?? ''))}</time><div><strong>{String(appointment.full_name ?? 'Scheduled lead')}</strong><span>{String(appointment.type ?? 'Initial Evaluation')} · {String(appointment.location ?? 'Practice')}</span></div><StatusText status={String(appointment.state ?? 'Scheduled')} /></article>)}</div> : loading ? <SkeletonRows rows={3} /> : <Empty title={todayOnly ? 'No appointments today' : 'No scheduled appointments'} body="Only appointment records returned by the database appear here." />}</Panel></>;
 }
 
@@ -516,8 +557,8 @@ function ReviewPage({ snapshot, action, onResolved, loading }: { snapshot: Snaps
     } finally { setResolving(false); }
   }
   return <><PageTitle title="Review Queue" subtitle="Resolve uncertain provider results without risking duplicate contact." tools={<button className="primary" type="button" disabled={!leads.length} onClick={reviewNext}>Review next</button>} />
-    {loading && !snapshot.leads.length ? <Panel title="Loading review queue"><SkeletonRows rows={4} /></Panel> : !leads.length ? <Panel><Empty title="Review queue is clear" body="There are no unresolved provider outcomes for this location." /></Panel> : <div className="two-col review-layout"><Panel title={`${leads.length} ${leads.length === 1 ? 'item needs' : 'items need'} attention`}>{leads.map((lead) => <button className={`review-item ${selected?.id === lead.id ? 'selected' : ''}`} key={lead.id} onClick={() => setSelectedId(lead.id)}><StatusBadge stage="attention" /><strong>{lead.full_name}</strong><span>{lead.review_reason}</span><small>{relative(lead.last_contacted_at)}</small></button>)}</Panel>
-      <Panel title={selected?.full_name ?? 'Review details'}>{selected && <><dl className="detail-list"><div><dt>Reason</dt><dd>{selected.review_reason}</dd></div><div><dt>Current status</dt><dd><StatusBadge stage="attention" /></dd></div><div><dt>Safe next step</dt><dd>Reconcile the provider result before any retry.</dd></div></dl><Alert tone="warning">Unknown create outcomes are never retried automatically.</Alert><button className="primary full" disabled={resolving} onClick={resolveReview}>{resolving ? 'Resolving…' : 'Resolve review'}</button></>}</Panel></div>}</>;
+    {loading && !snapshot.leads.length ? <Panel title="Loading review queue"><SkeletonRows rows={4} /></Panel> : !leads.length ? <Panel><Empty title="Review queue is clear" body="There are no unresolved provider outcomes for this location." /></Panel> : <div className="two-col review-layout"><Panel title={`${leads.length} ${leads.length === 1 ? 'item needs' : 'items need'} attention`}>{leads.map((lead) => <button type="button" className={`review-item ${selected?.id === lead.id ? 'selected' : ''}`} key={lead.id} onClick={() => setSelectedId(lead.id)}><StatusBadge stage="attention" /><strong>{lead.full_name}</strong><span>{lead.review_reason}</span><small>{relative(lead.last_contacted_at)}</small></button>)}</Panel>
+      <Panel title={selected?.full_name ?? 'Review details'}>{selected && <><dl className="detail-list"><div><dt>Reason</dt><dd>{selected.review_reason}</dd></div><div><dt>Current status</dt><dd><StatusBadge stage="attention" /></dd></div><div><dt>Safe next step</dt><dd>Reconcile the provider result before any retry.</dd></div></dl><Alert tone="warning">Unknown create outcomes are never retried automatically.</Alert><button className="primary full" type="button" disabled={resolving} onClick={resolveReview}>{resolving ? 'Resolving…' : 'Resolve review'}</button></>}</Panel></div>}</>;
 }
 
 function leadMovementSeries(snapshot: Snapshot) {
@@ -555,7 +596,7 @@ function AnalyticsPage({ snapshot, loading }: { snapshot: Snapshot; loading: boo
   const movement = leadMovementSeries(snapshot);
   if (loading && !snapshot.leads.length) return <div aria-busy="true" aria-label="Loading analytics"><PageTitle title="Analytics" subtitle="Loading pipeline movement and outreach outcomes…" /><SkeletonTiles /><div className="two-col"><Panel title="Leads created · last 14 days"><SkeletonRows rows={4} /></Panel><Panel title="Cadence outcomes"><SkeletonRows rows={4} /></Panel></div><Panel title="Operational indicators"><SkeletonRows rows={3} /></Panel></div>;
   return <><PageTitle title="Analytics" subtitle="A concise view of pipeline movement and outreach outcomes." tools={<button className="primary" type="button" onClick={() => exportLeadReport(snapshot)}>Export report</button>} /><StatusTiles counts={snapshot.counts} />
-    <div className="two-col"><Panel title="Leads created · last 14 days">{movement.max === 0 ? <Empty title="No leads yet" body="Leads created in the last fourteen days will appear here." /> : <><div className="bar-chart">{movement.points.map((point)=><i key={point.label} title={`${point.label}: ${point.value}`} style={{height:`${Math.round(point.value / movement.max * 100)}%`}}><span /></i>)}</div><div className="axis"><span>{movement.points[0]?.label}</span><span>{movement.points[movement.points.length-1]?.label}</span></div></>}</Panel><Panel title="Cadence outcomes"><Metric label="Calls reaching a person" value={pct(m?.calls_reached_rate)} width={`${m?.calls_reached_rate ?? 0}%`} /><Metric label="SMS confirmed delivered" value={pct(m?.messages_delivery_rate)} width={`${m?.messages_delivery_rate ?? 0}%`} /><Metric label="Booked" value={pct(m?.booked_rate)} width={`${m?.booked_rate ?? 0}%`} /><Metric label="Needs review" value={`${snapshot.counts.attention}`} width={`${m?.review_rate ?? 0}%`} tone="amber" /></Panel></div>
+    <div className="two-col"><Panel title="Leads created · last 14 days">{movement.max === 0 ? <Empty title="No leads yet" body="Leads created in the last fourteen days will appear here." /> : <><div className="bar-chart" role="img" aria-label={`Leads created by day. Maximum ${movement.max}.`}>{movement.points.map((point)=><span className="bar" key={point.label} style={{height:`${Math.round(point.value / movement.max * 100)}%`}}><span className="sr-only">{point.label}: {point.value}</span></span>)}</div><div className="axis"><span>{movement.points[0]?.label}</span><span>{movement.points[movement.points.length-1]?.label}</span></div></>}</Panel><Panel title="Cadence outcomes"><Metric label="Calls reaching a person" value={pct(m?.calls_reached_rate)} width={`${m?.calls_reached_rate ?? 0}%`} /><Metric label="SMS confirmed delivered" value={pct(m?.messages_delivery_rate)} width={`${m?.messages_delivery_rate ?? 0}%`} /><Metric label="Booked" value={pct(m?.booked_rate)} width={`${m?.booked_rate ?? 0}%`} /><Metric label="Needs review" value={`${snapshot.counts.attention}`} width={`${m?.review_rate ?? 0}%`} tone="amber" /></Panel></div>
     <Panel title="Operational indicators"><div className="metric-grid"><Stat label="Total leads" value={String(total)} trend={`${snapshot.counts.closed} closed`} /><Stat label="SMS sent" value={num(m?.messages_sent)} trend={`${num(m?.messages_delivered)} confirmed delivered`} /><Stat label="SMS awaiting confirmation" value={num(m?.messages_pending)} trend={m?.messages_failed ? `${m.messages_failed} failed` : "none failed"} /><Stat label="Calls completed" value={num(m?.calls_completed)} trend={pct(m?.calls_completion_rate)} /><Stat label="Review rate" value={pct(m?.review_rate)} trend={`${snapshot.counts.attention} of ${total}`} /></div></Panel></>;
 }
 
@@ -749,14 +790,14 @@ function CadenceStudio({ action, templates, leadId, loading = false }: { action:
       {scoped.length > 1 && <div className="field-label"><span>Saved plans</span><SelectMenu ariaLabel="Choose a saved personalized plan" value={String(selected?.id ?? '')} onChange={(value) => setSelectedId(Number(value))} options={scoped.map((version) => ({ value: String(version.id), label: `${version.name} · ${cadenceStatusLabel(version.status)}` }))} /></div>}
       {selected ? <div className="plan-summary-row"><div><strong>{selected.name}</strong><small>{cadenceStatusLabel(selected.status)} · {selected.steps.length} steps</small></div><button className="secondary" type="button" disabled={creating} onClick={selected.status === 'draft' ? () => setEditorOpen(true) : () => cloneVersion(selected)}>{creating ? 'Preparing…' : selected.status === 'draft' ? 'Continue setup' : 'Edit as new plan'}</button></div> : <div className="plan-summary-row"><div><strong>{creating ? 'Preparing a personalized plan…' : 'No personalized plan yet'}</strong><small>The standard sequence will be copied before you edit it.</small></div><button className="secondary" type="button" disabled={creating || !standard} onClick={() => cloneVersion(standard)}>{creating ? 'Preparing…' : 'Create plan'}</button></div>}
     </div>}
-    {editorOpen && selected?.status === 'draft' && <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setEditorOpen(false); }}><section className="modal plan-editor-modal" role="dialog" aria-modal="true" aria-labelledby="personal-plan-title" onKeyDown={(event) => { if (event.key === 'Escape') setEditorOpen(false); }}><header><div><h2 id="personal-plan-title">Personalized outreach plan</h2><p>Select one step at a time. Changes apply only to this patient.</p></div><button className="close-button" type="button" onClick={() => setEditorOpen(false)} aria-label="Close personalized plan editor">×</button></header><div className="plan-editor-body"><CadenceEditor key={`${selected.id}-${selected.name}`} version={selected} templates={templates} action={action} local onChanged={(activated) => { setEditorOpen(false); setPersonalizedMode(activated); setRefresh((value) => value + 1); }} /></div></section></div>}
+    {editorOpen && selected?.status === 'draft' && <ModalShell className="plan-editor-modal" labelId="personal-plan-title" onClose={() => setEditorOpen(false)}><header><div><h2 id="personal-plan-title">Personalized outreach plan</h2><p>Select one step at a time. Changes apply only to this patient.</p></div><button className="close-button" type="button" onClick={() => setEditorOpen(false)} aria-label="Close personalized plan editor">×</button></header><div className="plan-editor-body"><CadenceEditor key={`${selected.id}-${selected.name}`} version={selected} templates={templates} action={action} local onChanged={(activated) => { setEditorOpen(false); setPersonalizedMode(activated); setRefresh((value) => value + 1); }} /></div></ModalShell>}
   </>;
 
   if (!selected) return <Panel><Empty title="No cadence configured" body="Create and seed an active global cadence before adding versions." /></Panel>;
 
   return <div className="cadence-version-layout"><section className="cadence-studio">
-    <div className="version-tabs" role="tablist" aria-label="Global cadence versions">
-      {scoped.map((version) => <button type="button" role="tab" aria-selected={version.id === selected.id} className={version.id === selected.id ? 'selected' : ''} onClick={() => setSelectedId(version.id)} key={version.id}><span>{version.name}</span><small>{cadenceStatusLabel(version.status)}</small></button>)}
+    <div className="version-tabs" role="group" aria-label="Global cadence versions">
+      {scoped.map((version) => <button type="button" aria-pressed={version.id === selected.id} className={version.id === selected.id ? 'selected' : ''} onClick={() => setSelectedId(version.id)} key={version.id}><span>{version.name}</span><small>{cadenceStatusLabel(version.status)}</small></button>)}
       <button className="add-version" type="button" disabled={creating} onClick={() => cloneVersion()}>{creating ? 'Creating…' : '+ Add version'}</button>
     </div>
     <div className="version-toolbar"><div>{renameValue ? <label className="version-name-editor"><span className="sr-only">Version name</span><input autoFocus value={renameValue} maxLength={120} onChange={(event) => setRenameValue(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') saveName(); if (event.key === 'Escape') setRenameValue(''); }} /></label> : <strong>{selected.name}</strong>}<small>{selected.status === 'deleted' ? 'This complete version is retained and can be reused as a new draft.' : 'Use the Status column to enable or disable steps. Create a draft for timing, channel, or wording changes.'}</small></div><div className="version-toolbar-actions">{renameValue ? <><button className="secondary" type="button" disabled={renaming || !renameValue.trim()} onClick={saveName}>{renaming ? 'Saving…' : 'Save name'}</button><button className="secondary" type="button" onClick={() => setRenameValue('')}>Cancel</button></> : <button className="secondary" type="button" onClick={() => setRenameValue(selected.name)}>Rename</button>}{selected.status === 'deleted' ? <button className="primary" type="button" disabled={creating} onClick={() => cloneVersion(selected)}>{creating ? 'Creating…' : 'Reuse as new draft'}</button> : <button className="danger-button" type="button" disabled={selected.status === 'active' || deleting} onClick={deleteVersion}>{deleting ? 'Deleting…' : 'Delete version'}</button>}</div></div>
@@ -860,7 +901,7 @@ function TemplateStudio({ snapshot, action, onPublished }: { snapshot: Snapshot;
     } finally { setDeleting(false); }
   }
   return <><PageTitle title="SMS Template Studio" subtitle="Manage reusable message copy for patient outreach." tools={<><button className="secondary" type="button" disabled={!dirty || publishing} onClick={discard}>Discard changes</button><button className="primary" type="button" disabled={!dirty || publishing || !body.trim() || !name.trim()} onClick={publish}>{publishing ? 'Publishing…' : 'Publish changes'}</button></>} /><Alert>Reusable templates are your own copy, ready to import into a cadence draft. Cadence messages belong to the published cadence and are locked here — change them by creating a draft in Cadence Studio.</Alert>
-    <div className="template-layout"><Panel title="Templates"><div className="template-list-actions"><p>{templates.length} saved message{templates.length === 1 ? '' : 's'}</p><button className="secondary" type="button" onClick={() => setAdding(true)}>+ Add template</button></div><p className="template-group-label">Reusable templates</p>{reusable.length ? reusable.map((item) => <button className={`template-item ${selected?.id === item.id ? 'selected' : ''}`} key={String(item.id)} onClick={() => setSelectedId(String(item.id))}><span aria-hidden="true">✉</span><div><strong>{smsTemplateName(item)}</strong><small>{item.cadence_step_id ? `Day ${String(item.day_offset ?? '')} · locked` : 'Reusable'}</small></div></button>) : <p className="control-note">No reusable templates yet.</p>}<p className="template-group-label">Cadence messages · {cadenceVersionName}</p>{cadenceMessages.map((item) => <button className={`template-item ${selected?.id === item.id ? 'selected' : ''}`} key={String(item.id)} onClick={() => setSelectedId(String(item.id))}><span aria-hidden="true">✉</span><div><strong>{smsTemplateName(item)}</strong><small>{item.cadence_step_id ? `Day ${String(item.day_offset ?? '')} · locked` : 'Reusable'}</small></div></button>)}</Panel><Panel title={selected ? name || 'Untitled template' : 'SMS template'}>{selected ? <>{locked && <Alert tone="warning">This message is part of {cadenceVersionName} and is locked. Create an editable draft in Cadence Studio to change it.</Alert>}<label className="field-label">Template name<input value={name} maxLength={120} readOnly={locked} onChange={(event)=>setDraftNames((current)=>({...current,[id]:event.target.value}))} /></label><label className="field-label template-body-field">Message body<textarea value={body} readOnly={locked} onChange={(event)=>setDraftBodies((current)=>({...current,[id]:event.target.value}))} maxLength={1600} /></label><div className="editor-footer"><StatusText status={locked ? 'Locked' : body.trim() && name.trim() ? 'Ready to publish' : 'Needs content'} /><span>{body.length} / 1600</span></div></> : <Empty title="Choose a template" body="Select a message from the template list." />}</Panel><div className="stack"><Panel title="Preview"><div className="phone-preview"><small>Template preview</small><p>{body.replace('{{first_name}}','Patient').replace('{{location}}','Preferred location')}</p></div></Panel><Panel title="Template settings"><dl className="detail-list"><div><dt>Channel</dt><dd>Text message</dd></div><div><dt>Type</dt><dd>{locked ? `Cadence message · ${cadenceVersionName}` : 'Reusable template'}</dd></div><div><dt>Editable</dt><dd><StatusText status={locked ? 'Locked' : 'Yes'} /></dd></div></dl>{selected && <><button className="danger-button full" type="button" disabled={!Boolean(selected.deletable) || deleting} onClick={deleteTemplate}>{deleting ? 'Deleting…' : 'Permanently delete'}</button>{!Boolean(selected.deletable) && <p className="control-note">Cadence messages stay protected here. Remove their step from a cadence draft instead.</p>}</>}</Panel></div></div>{adding && <NewTemplateDialog onClose={() => setAdding(false)} onCreate={createTemplate} />}</>;
+    <div className="template-layout"><Panel title="Templates"><div className="template-list-actions"><p>{templates.length} saved message{templates.length === 1 ? '' : 's'}</p><button className="secondary" type="button" onClick={() => setAdding(true)}>+ Add template</button></div><p className="template-group-label">Reusable templates</p>{reusable.length ? reusable.map((item) => <button type="button" className={`template-item ${selected?.id === item.id ? 'selected' : ''}`} key={String(item.id)} onClick={() => setSelectedId(String(item.id))}><span><EnvelopeIcon /></span><div><strong>{smsTemplateName(item)}</strong><small>{item.cadence_step_id ? `Day ${String(item.day_offset ?? '')} · locked` : 'Reusable'}</small></div></button>) : <p className="control-note">No reusable templates yet.</p>}<p className="template-group-label">Cadence messages · {cadenceVersionName}</p>{cadenceMessages.map((item) => <button type="button" className={`template-item ${selected?.id === item.id ? 'selected' : ''}`} key={String(item.id)} onClick={() => setSelectedId(String(item.id))}><span><EnvelopeIcon /></span><div><strong>{smsTemplateName(item)}</strong><small>{item.cadence_step_id ? `Day ${String(item.day_offset ?? '')} · locked` : 'Reusable'}</small></div></button>)}</Panel><Panel title={selected ? name || 'Untitled template' : 'SMS template'}>{selected ? <>{locked && <Alert tone="warning">This message is part of {cadenceVersionName} and is locked. Create an editable draft in Cadence Studio to change it.</Alert>}<label className="field-label">Template name<input value={name} maxLength={120} readOnly={locked} onChange={(event)=>setDraftNames((current)=>({...current,[id]:event.target.value}))} /></label><label className="field-label template-body-field">Message body<textarea value={body} readOnly={locked} onChange={(event)=>setDraftBodies((current)=>({...current,[id]:event.target.value}))} maxLength={1600} /></label><div className="editor-footer"><StatusText status={locked ? 'Locked' : body.trim() && name.trim() ? 'Ready to publish' : 'Needs content'} /><span>{body.length} / 1600</span></div></> : <Empty title="Choose a template" body="Select a message from the template list." />}</Panel><div className="stack"><Panel title="Preview"><div className="phone-preview"><small>Template preview</small><p>{body.replace('{{first_name}}','Patient').replace('{{location}}','Preferred location')}</p></div></Panel><Panel title="Template settings"><dl className="detail-list"><div><dt>Channel</dt><dd>Text message</dd></div><div><dt>Type</dt><dd>{locked ? `Cadence message · ${cadenceVersionName}` : 'Reusable template'}</dd></div><div><dt>Editable</dt><dd><StatusText status={locked ? 'Locked' : 'Yes'} /></dd></div></dl>{selected && <><button className="danger-button full" type="button" disabled={!Boolean(selected.deletable) || deleting} onClick={deleteTemplate}>{deleting ? 'Deleting…' : 'Permanently delete'}</button>{!Boolean(selected.deletable) && <p className="control-note">Cadence messages stay protected here. Remove their step from a cadence draft instead.</p>}</>}</Panel></div></div>{adding && <NewTemplateDialog onClose={() => setAdding(false)} onCreate={createTemplate} />}</>;
 }
 
 function smsTemplateName(template: Record<string, unknown> | undefined) {
@@ -876,7 +917,7 @@ function NewTemplateDialog({ onClose, onCreate }: { onClose: () => void; onCreat
   const [body, setBody] = useState('');
   const [saving, setSaving] = useState(false);
   async function submit(event: FormEvent) { event.preventDefault(); if (!name.trim() || !body.trim() || saving) return; setSaving(true); if (!await onCreate(name.trim(), body.trim())) setSaving(false); }
-  return <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><section className="modal template-dialog" role="dialog" aria-modal="true" aria-labelledby="new-template-title"><header><div><h2 id="new-template-title">Add SMS template</h2><p>Create reusable message copy for the outreach team.</p></div><button className="close-button" type="button" onClick={onClose} aria-label="Close template dialog">×</button></header><form onSubmit={submit}><label className="field-label">Template name<input autoFocus value={name} maxLength={120} onChange={(event) => setName(event.target.value)} /></label><label className="field-label">Message body<textarea value={body} maxLength={1600} onChange={(event) => setBody(event.target.value)} /></label><footer><button className="secondary" type="button" onClick={onClose}>Cancel</button><button className="primary" type="submit" disabled={saving || !name.trim() || !body.trim()}>{saving ? 'Adding…' : 'Add template'}</button></footer></form></section></div>;
+  return <ModalShell className="template-dialog" labelId="new-template-title" onClose={onClose}><header><div><h2 id="new-template-title">Add SMS template</h2><p>Create reusable message copy for the outreach team.</p></div><button className="close-button" type="button" onClick={onClose} aria-label="Close template dialog">×</button></header><form onSubmit={submit}><label className="field-label">Template name<input autoFocus value={name} maxLength={120} onChange={(event) => setName(event.target.value)} /></label><label className="field-label">Message body<textarea value={body} maxLength={1600} onChange={(event) => setBody(event.target.value)} /></label><footer><button className="secondary" type="button" onClick={onClose}>Cancel</button><button className="primary" type="submit" disabled={saving || !name.trim() || !body.trim()}>{saving ? 'Adding…' : 'Add template'}</button></footer></form></ModalShell>;
 }
 
 function LeadFrame({ detail, tab, action, children }: { detail: LeadDetail; tab: string; action: DashboardAction; children: ReactNode }) {
@@ -906,7 +947,7 @@ This removes the lead and everything attached to it - cadence schedule, calls, t
     if (await action(`leads/${id}`,'DELETE')) router.push('/leads');
     else setDeleting(false);
   }
-  return <><div className="breadcrumbs"><Link href="/leads">Lead Pipeline</Link><span>/</span><span>{String(lead.display_id)}</span><span>/</span><strong>{lead.full_name}</strong></div><section className="lead-header"><div className="lead-avatar">{initials(lead.full_name)}</div><div className="lead-identity"><h1>{lead.full_name}</h1><span>☎ {phone}</span></div><StatusBadge stage={stage} paused={cadencePaused} />{total > 0 && !cadenceOver && <span className="version">{String(lead.cadence_version_name ?? detail.cadence_version?.name ?? 'Cadence')} · {progress} of {total}</span>}<span className="location"><MapPinIcon />{String(lead.location ?? 'Not assigned')}</span><div className="record-actions"><button className="secondary icon-label" type="button" onClick={() => setEditing(true)} title="Edit lead details"><PencilIcon />Edit</button>{!cadenceOver && <button className="secondary icon-label" disabled={busy} onClick={toggleCadence} title={cadencePaused ? 'Resume cadence' : 'Pause cadence'}>{cadencePaused ? <PlayIcon /> : <PauseIcon />}{cadencePaused ? 'Resume cadence':'Pause cadence'}</button>}<Link className="primary icon-label" href={`/leads/${id}/conversations/sms`}><EnvelopeIcon />Send SMS</Link><button className="danger-button icon-label" type="button" disabled={busy || deleting} onClick={removeLead} title="Delete lead" aria-label="Delete lead"><TrashIcon />{deleting ? 'Deleting…' : 'Delete lead'}</button></div></section><nav className="record-tabs">{[['overview','Overview',`/leads/${id}`],['conversations','Conversations',`/leads/${id}/conversations/sms`],['cadence','Cadence',`/leads/${id}/cadence`],['appointments','Appointments',`/leads/${id}/appointments`],['history','History',`/leads/${id}/history`]].map(([key,label,href])=><Link className={tab===key?'active':''} href={href} key={key}>{label}</Link>)}</nav>{stage === 'attention' && Boolean(lead.review_reason) && <Alert tone="warning"><strong>Needs attention:</strong> {String(lead.review_reason)}</Alert>}{editing && <EditLeadDialog detail={detail} action={action} onClose={() => setEditing(false)} />}{children}</>;
+  return <><div className="breadcrumbs"><Link href="/leads">Lead Pipeline</Link><span>/</span><span>{String(lead.display_id)}</span><span>/</span><strong>{lead.full_name}</strong></div><section className="lead-header"><div className="lead-avatar">{initials(lead.full_name)}</div><div className="lead-identity"><h1>{lead.full_name}</h1><span><PhoneIcon />{phone}</span></div><StatusBadge stage={stage} paused={cadencePaused} />{total > 0 && !cadenceOver && <span className="version">{String(lead.cadence_version_name ?? detail.cadence_version?.name ?? 'Cadence')} · {progress} of {total}</span>}<span className="location"><MapPinIcon />{String(lead.location ?? 'Not assigned')}</span><div className="record-actions"><button className="secondary icon-label" type="button" onClick={() => setEditing(true)} title="Edit lead details"><PencilIcon />Edit</button>{!cadenceOver && <button className="secondary icon-label" type="button" disabled={busy} onClick={toggleCadence} title={cadencePaused ? 'Resume cadence' : 'Pause cadence'}>{cadencePaused ? <PlayIcon /> : <PauseIcon />}{cadencePaused ? 'Resume cadence':'Pause cadence'}</button>}<Link className="primary icon-label" href={`/leads/${id}/conversations/sms`}><EnvelopeIcon />Send SMS</Link><button className="danger-button icon-label" type="button" disabled={busy || deleting} onClick={removeLead} title="Delete lead" aria-label="Delete lead"><TrashIcon />{deleting ? 'Deleting…' : 'Delete lead'}</button></div></section><nav className="record-tabs">{[['overview','Overview',`/leads/${id}`],['conversations','Conversations',`/leads/${id}/conversations/sms`],['cadence','Cadence',`/leads/${id}/cadence`],['appointments','Appointments',`/leads/${id}/appointments`],['history','History',`/leads/${id}/history`]].map(([key,label,href])=><Link className={tab===key?'active':''} aria-current={tab === key ? 'page' : undefined} href={href} key={key}>{label}</Link>)}</nav>{stage === 'attention' && Boolean(lead.review_reason) && <Alert tone="warning"><strong>Needs attention:</strong> {String(lead.review_reason)}</Alert>}{editing && <EditLeadDialog detail={detail} action={action} onClose={() => setEditing(false)} />}{children}</>;
 }
 
 function LeadOverview({ detail }: { detail: LeadDetail }) {
@@ -917,19 +958,19 @@ function LeadOverview({ detail }: { detail: LeadDetail }) {
   const pendingProvider = !cadenceOver && detail.events.some((event) => event.status === 'attempted' || event.status === 'in_flight');
   const nextAction = String(lead.next_step ?? (pendingProvider ? 'Awaiting provider result' : detail.events.length ? 'Cadence complete' : 'No cadence scheduled'));
   const nextCopy = cadenceOver ? 'Automated outreach has ended for this lead.' : pendingProvider ? 'A call was dispatched and is waiting for its provider result.' : lead.next_event_id ? 'Continue the scheduled outreach cadence.' : 'No planned outreach event remains.';
-  return <div className="two-col wide-left"><div className="stack"><Panel title="Lead information"><dl className="info-grid"><div><dt>Lead ID</dt><dd>{String(lead.display_id)}</dd></div><div><dt>Source</dt><dd>{String(lead.source ?? lead.source_system ?? 'Unknown')}</dd></div><div><dt>Owner</dt><dd>{String(lead.owner ?? 'Unassigned')}</dd></div><div><dt>Created</dt><dd>{date(String(lead.created_at ?? ''))}</dd></div>{Boolean(lead.date_of_birth) && <div><dt>Date of birth</dt><dd>{String(lead.date_of_birth)}</dd></div>}{Boolean(lead.referred_by) && <div><dt>Referred by</dt><dd>{String(lead.referred_by)}</dd></div>}{Boolean(lead.lead_type) && <div><dt>Lead type</dt><dd>{String(lead.lead_type)}</dd></div>}<div><dt>Preferred location</dt><dd>{String(lead.location ?? 'Not assigned')}</dd></div><div><dt>Time zone</dt><dd>{String(lead.timezone ?? 'Not recorded')}</dd></div></dl></Panel><Panel title={cadenceOver ? "Outcome" : "Next action"}><div className="next-action"><span className="status-icon">☎</span><div><strong>{nextAction}</strong><p>{nextCopy}</p></div><Link className="secondary" href={`/leads/${lead.id}/cadence`}>View schedule</Link></div></Panel><Panel title="Notes">{stage === 'attention' && Boolean(lead.review_reason) ? <p><strong>Why this lead needs attention:</strong> {String(lead.review_reason)}</p> : <p className="muted">No additional lead notes have been recorded.</p>}</Panel></div><Panel title="Recent activity"><ActivityList detail={detail} /><Link className="text-action footer-link" href={`/leads/${lead.id}/history`}>View full history →</Link></Panel></div>;
+  return <div className="two-col wide-left"><div className="stack"><Panel title="Lead information"><dl className="info-grid"><div><dt>Lead ID</dt><dd>{String(lead.display_id)}</dd></div><div><dt>Source</dt><dd>{sourceLabel(lead.source ?? lead.source_system)}</dd></div><div><dt>Owner</dt><dd>{String(lead.owner ?? 'Unassigned')}</dd></div><div><dt>Created</dt><dd>{date(String(lead.created_at ?? ''))}</dd></div>{Boolean(lead.date_of_birth) && <div><dt>Date of birth</dt><dd>{String(lead.date_of_birth)}</dd></div>}{Boolean(lead.referred_by) && <div><dt>Referred by</dt><dd>{String(lead.referred_by)}</dd></div>}{Boolean(lead.lead_type) && <div><dt>Lead type</dt><dd>{String(lead.lead_type)}</dd></div>}<div><dt>Preferred location</dt><dd>{String(lead.location ?? 'Not assigned')}</dd></div><div><dt>Time zone</dt><dd>{timezoneLabel(lead.timezone)}</dd></div></dl></Panel><Panel title={cadenceOver ? "Outcome" : "Next action"}><div className="next-action"><span className="status-icon"><PhoneIcon size={20} /></span><div><strong>{nextAction}</strong><p>{nextCopy}</p></div><Link className="secondary" href={`/leads/${lead.id}/cadence`}>View schedule</Link></div></Panel><Panel title="Notes">{stage === 'attention' && Boolean(lead.review_reason) ? <p><strong>Why this lead needs attention:</strong> {String(lead.review_reason)}</p> : <p className="muted">No additional lead notes have been recorded.</p>}</Panel></div><Panel title="Recent activity"><ActivityList detail={detail} /><Link className="text-action footer-link" href={`/leads/${lead.id}/history`}>View full history →</Link></Panel></div>;
 }
 
 function SmsPage({ detail, action }: { detail: LeadDetail; action: DashboardAction }) {
   const [message,setMessage]=useState(''); const [sending,setSending]=useState(false);
   async function submit(event:FormEvent){event.preventDefault();if(!message.trim())return;setSending(true);try{await action(`leads/${detail.lead.id}/sms`,'POST',{body:message,idempotency_key:crypto.randomUUID()});setMessage('');}finally{setSending(false)}}
-  return <><ConversationTabs id={String(detail.lead.id)} active="sms" /><div className="conversation-layout"><Panel title="SMS conversation"><div className="messages">{detail.messages.map((item)=><div className={`message ${item.direction}`} key={String(item.id)}><small>{item.direction === 'outbound' ? 'Practice Team':String(detail.lead.full_name)} · {time(String(item.occurred_at))}</small><MessageBody body={String(item.body)} /><span>{String(item.delivery_status)}{item.failure_reason?` · carrier code ${String(item.failure_reason)}`:''}</span></div>)}</div><form className="composer" onSubmit={submit}><textarea value={message} onChange={(event)=>setMessage(event.target.value)} maxLength={1600} placeholder="Write a patient-safe message…" /><div><span>{message.length}/1600</span><button className="primary" disabled={sending || !message.trim()}>{sending?'Sending…':'Send SMS'}</button></div></form></Panel><div className="stack"><Panel title="Conversation context"><dl className="detail-list"><div><dt>Status</dt><dd><StatusBadge stage={String(detail.lead.stage ?? 'cadence') as LeadStage} paused={detail.lead.cadence_state === 'paused'} /></dd></div><div><dt>Next step</dt><dd>{String(detail.lead.next_step ?? 'No planned event')}</dd></div><div><dt>Consent</dt><dd><StatusText status="Contact permitted" /></dd></div><div><dt>Last activity</dt><dd>{relative(String(detail.lead.last_contacted_at ?? ''))}</dd></div></dl></Panel><Panel title="Safety"><p className="muted">This conversation belongs only to {String(detail.lead.full_name)}. DNC and SMS opt-out rules are checked again by the server before sending.</p></Panel></div></div></>;
+  return <><ConversationTabs id={String(detail.lead.id)} active="sms" /><div className="conversation-layout"><Panel title="SMS conversation">{detail.messages.length ? <div className="messages">{detail.messages.map((item)=><div className={`message ${item.direction}`} key={String(item.id)}><small>{item.direction === 'outbound' ? 'Practice Team':String(detail.lead.full_name)} · {time(String(item.occurred_at))}</small><MessageBody body={String(item.body)} /><span>{displayEnum(item.delivery_status)}{item.failure_reason?` · carrier code ${String(item.failure_reason)}`:''}</span></div>)}</div> : <Empty title="No messages yet" body="Messages sent to or received from this lead will appear here." />}<form className="composer" onSubmit={submit}><textarea aria-label="SMS message" value={message} onChange={(event)=>setMessage(event.target.value)} maxLength={1600} placeholder="Write a patient-safe message…" /><div><span>{message.length}/1600</span><button className="primary" type="submit" disabled={sending || !message.trim()}>{sending?'Sending…':'Send SMS'}</button></div></form></Panel><div className="stack"><Panel title="Conversation context"><dl className="detail-list"><div><dt>Status</dt><dd><StatusBadge stage={String(detail.lead.stage ?? 'cadence') as LeadStage} paused={detail.lead.cadence_state === 'paused'} /></dd></div><div><dt>Next step</dt><dd>{String(detail.lead.next_step ?? 'No planned event')}</dd></div><div><dt>Consent</dt><dd><StatusText status="Contact permitted" /></dd></div><div><dt>Last activity</dt><dd>{relative(String(detail.lead.last_contacted_at ?? ''))}</dd></div></dl></Panel><Panel title="Safety"><p className="muted">This conversation belongs only to {String(detail.lead.full_name)}. DNC and SMS opt-out rules are checked again by the server before sending.</p></Panel></div></div></>;
 }
 
 function CallsPage({ detail }: { detail: LeadDetail }) {
   const [selected,setSelected]=useState(detail.calls[0]);
   const turns=String(selected?.transcript_text ?? '').split('\n').filter(Boolean);
-  return <><ConversationTabs id={String(detail.lead.id)} active="calls" /><div className="call-layout"><Panel title="Call sessions">{detail.calls.map((call)=><button className={`call-session ${selected?.id===call.id?'selected':''}`} onClick={()=>setSelected(call)} key={String(call.id)}><span>☎</span><div><strong>{date(String(call.dialed_at))} · {duration(Number(call.duration_seconds))}</strong><small>{String(call.answer_state ?? 'pending').replace('_',' ')}</small></div></button>)}</Panel><Panel title="Call transcript"><div className="transcript">{turns.length ? turns.map((turn,index)=>{const [speaker,...words]=turn.split(':');return <div key={index}><b>{initials(speaker)}</b><p><strong>{speaker}</strong>{words.join(':')}</p></div>}) : <Empty title="No text transcript" body="This call did not produce transcript text." />}</div>{Boolean(selected?.summary_text) && <Alert><strong>AI call summary</strong><br />{String(selected.summary_text)}</Alert>}</Panel><Panel title="Call context"><dl className="detail-list"><div><dt>Provider result</dt><dd><StatusText status={String(selected?.ended_reason ?? selected?.answer_state ?? 'Pending')} /></dd></div><div><dt>Record</dt><dd>Provider call session</dd></div><div><dt>Duration</dt><dd>{duration(Number(selected?.duration_seconds ?? 0))}</dd></div><div><dt>Next action</dt><dd>{String(detail.lead.next_step ?? 'No planned event')}</dd></div></dl><Alert tone="success">Text transcript only. No audio recording is stored or exposed.</Alert></Panel></div></>;
+  return <><ConversationTabs id={String(detail.lead.id)} active="calls" /><div className="call-layout"><Panel title="Call sessions">{detail.calls.length ? detail.calls.map((call)=><button type="button" className={`call-session ${selected?.id===call.id?'selected':''}`} onClick={()=>setSelected(call)} key={String(call.id)}><span><PhoneIcon size={18} /></span><div><strong>{date(String(call.dialed_at))} · {duration(Number(call.duration_seconds))}</strong><small>{displayEnum(call.answer_state ?? 'pending')}</small></div></button>) : <Empty title="No call sessions" body="Completed and attempted calls will appear here." />}</Panel><Panel title="Call transcript"><div className="transcript">{turns.length ? turns.map((turn,index)=>{const [speaker,...words]=turn.split(':');return <div key={index}><b>{initials(speaker)}</b><p><strong>{speaker}</strong>{words.join(':')}</p></div>}) : <Empty title="No text transcript" body={selected ? 'This call did not produce transcript text.' : 'Choose a call session to view its transcript.'} />}</div>{Boolean(selected?.summary_text) && <Alert><strong>AI call summary</strong><br />{String(selected.summary_text)}</Alert>}</Panel><Panel title="Call context">{selected ? <><dl className="detail-list"><div><dt>Provider result</dt><dd><StatusText status={String(selected.ended_reason ?? selected.answer_state ?? 'Pending')} /></dd></div><div><dt>Record</dt><dd>Provider call session</dd></div><div><dt>Duration</dt><dd>{duration(Number(selected.duration_seconds ?? 0))}</dd></div><div><dt>Next action</dt><dd>{String(detail.lead.next_step ?? 'No planned event')}</dd></div></dl><Alert>Text transcript only. No audio recording is stored or exposed.</Alert></> : <Empty title="No call selected" body="Call details will appear after a call session is available." />}</Panel></div></>;
 }
 
 function splitCadenceRuns(events: Array<Record<string, unknown>>) {
@@ -1123,6 +1164,7 @@ function LeadCadencePage({ detail, action, templates }: { detail: LeadDetail; ac
   const runs = splitCadenceRuns(detail.events);
   const current = runs[runs.length - 1] ?? [];
   const tally = runTallies(current);
+  const [rescheduling, setRescheduling] = useState<RunEvent | null>(null);
 
   // Pause and resume arrive as separate audit rows; pair them so a card can show
   // one interruption rather than two unexplained entries.
@@ -1133,12 +1175,7 @@ function LeadCadencePage({ detail, action, templates }: { detail: LeadDetail; ac
     else if (pauses.length && pauses[pauses.length - 1].resumed === null) pauses[pauses.length - 1].resumed = at;
   }
 
-  function reschedule(event: Record<string, unknown>) {
-    const value = window.prompt('New ISO date/time', String(event.scheduled_for));
-    if (value) action(`leads/${detail.lead.id}/outreach-events/${event.id}`, 'PATCH', { scheduled_for: value });
-  }
-
-  return <div className="two-col wide-left cadence-page">
+  return <><div className="two-col wide-left cadence-page">
     <Panel title={`${String(detail.lead.full_name)}’s outreach`}>
       <p className="panel-subtitle">
         {runs.length > 1
@@ -1157,27 +1194,45 @@ function LeadCadencePage({ detail, action, templates }: { detail: LeadDetail; ac
                 index={index}
                 total={runs.length}
                 pauses={pauses}
-                onReschedule={index === runs.length - 1 ? reschedule : undefined}
+                onReschedule={index === runs.length - 1 ? setRescheduling : undefined}
               />
             </div>)}
           </div>}
     </Panel>
-    <div className="stack"><Panel title="Personalized outreach"><p className="panel-subtitle">Changes here apply only to {String(detail.lead.full_name)}.</p><dl className="detail-list"><div><dt>Lead plan</dt><dd>{detail.cadence_version?.name ?? 'Standard outreach plan'}</dd></div>{detail.lead.global_version_name ? <div><dt>Global default</dt><dd>{String(detail.lead.global_version_name)}</dd></div> : null}<div><dt>Time zone</dt><dd>{String(detail.lead.timezone ?? 'Not recorded')}</dd></div><div><dt>Preferred location</dt><dd>{String(detail.lead.location ?? 'Not assigned')}</dd></div><div><dt>Next send window</dt><dd>Business hours</dd></div></dl><CadenceStudio action={action} templates={templates} leadId={String(detail.lead.id)} /></Panel><Panel title="Contact rules"><Toggle label="Do not contact" enabled={String(detail.lead.status) === 'do_not_contact'} onChange={(next) => action(`leads/${detail.lead.id}/contact-rules`, 'POST', { do_not_contact: next })} /><p className="muted">Blocks calls and texts, cancels the remaining schedule, and moves the lead to Closed. Turning it off releases the block but does not restart outreach.</p></Panel></div>
-  </div>;
+    <div className="stack"><Panel title="Personalized outreach"><p className="panel-subtitle">Changes here apply only to {String(detail.lead.full_name)}.</p><dl className="detail-list"><div><dt>Lead plan</dt><dd>{detail.cadence_version?.name ?? 'Standard outreach plan'}</dd></div>{detail.lead.global_version_name ? <div><dt>Global default</dt><dd>{String(detail.lead.global_version_name)}</dd></div> : null}<div><dt>Time zone</dt><dd>{timezoneLabel(detail.lead.timezone)}</dd></div><div><dt>Preferred location</dt><dd>{String(detail.lead.location ?? 'Not assigned')}</dd></div><div><dt>Next send window</dt><dd>Business hours</dd></div></dl><CadenceStudio action={action} templates={templates} leadId={String(detail.lead.id)} /></Panel><Panel title="Contact rules"><Toggle label="Do not contact" enabled={String(detail.lead.status) === 'do_not_contact'} onChange={(next) => action(`leads/${detail.lead.id}/contact-rules`, 'POST', { do_not_contact: next })} /><p className="muted">Blocks calls and texts, cancels the remaining schedule, and moves the lead to Closed. Turning it off releases the block but does not restart outreach.</p></Panel></div>
+  </div>{rescheduling && <RescheduleDialog event={rescheduling} leadId={String(detail.lead.id)} action={action} onClose={() => setRescheduling(null)} />}</>;
+}
+
+function RescheduleDialog({ event, leadId, action, onClose }: { event: RunEvent; leadId: string; action: DashboardAction; onClose: () => void }) {
+  const [value, setValue] = useState(() => clinicDateTimeValue(event.scheduled_for));
+  const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
+  async function submit(submitEvent: FormEvent<HTMLFormElement>) {
+    submitEvent.preventDefault();
+    try {
+      const scheduledFor = clinicWallTimeToIso(value);
+      setError(''); setSaving(true);
+      const result = await action(`leads/${leadId}/outreach-events/${event.id}`, 'PATCH', { scheduled_for: scheduledFor });
+      if (result) onClose();
+    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Choose a valid date and time.'); }
+    finally { setSaving(false); }
+  }
+  return <ModalShell className="reschedule-dialog" labelId="reschedule-title" onClose={onClose}><header><div><h2 id="reschedule-title">Reschedule outreach step</h2><p>Choose when this step should run in Pacific Time.</p></div><button className="close-button" type="button" onClick={onClose} aria-label="Close reschedule dialog">×</button></header><form onSubmit={submit}><label className="field-label">Date and time ({CLINIC_TZ_LABEL})<input type="datetime-local" value={value} onChange={(changeEvent) => setValue(changeEvent.target.value)} required /></label>{error && <p className="field-error" role="alert">{error}</p>}<footer><button className="secondary" type="button" onClick={onClose} disabled={saving}>Cancel</button><button className="primary" type="submit" disabled={saving || !value}>{saving ? 'Saving…' : 'Save time'}</button></footer></form></ModalShell>;
 }
 
 function LeadAppointmentsPage({ detail }: { detail: LeadDetail }) {
-  return <div className="two-col wide-left"><Panel title="Appointment"><div className="empty-appointment"><span>▦</span><h2>{detail.appointments.length ? 'Appointment scheduled':'No appointment booked'}</h2><p>Live availability can be reviewed before confirming with {String(detail.lead.full_name)}.</p></div><Alert tone="warning">Availability is live · booking is gated until the Stride appointment type is verified.</Alert><button className="primary">Check availability</button></Panel><div className="stack"><Panel title="Appointment preferences"><dl className="detail-list"><div><dt>Preferred location</dt><dd>{String(detail.lead.location ?? 'Not assigned')}</dd></div><div><dt>Time zone</dt><dd>{String(detail.lead.timezone ?? 'Not recorded')}</dd></div><div><dt>Appointment type</dt><dd>Initial Evaluation</dd></div></dl></Panel><Panel title="Booking history"><p className="muted">{detail.appointments.length ? `${detail.appointments.length} appointment record(s)` : 'No prior appointments'}</p></Panel></div></div>;
+  const first = detail.appointments[0];
+  return <div className="two-col wide-left"><Panel title="Appointment"><div className="empty-appointment"><span><CalendarIcon size={34} /></span><h2>{detail.appointments.length ? 'Appointment scheduled':'No appointment booked'}</h2><p>{first ? `${date(String(first.start_utc ?? first.booked_at ?? ''))} · ${displayEnum(first.state ?? 'scheduled')}` : `No appointment record is available for ${String(detail.lead.full_name)}.`}</p></div><Alert>Availability checking will appear after the dashboard booking endpoint is enabled.</Alert></Panel><div className="stack"><Panel title="Appointment preferences"><dl className="detail-list"><div><dt>Preferred location</dt><dd>{String(detail.lead.location ?? 'Not assigned')}</dd></div><div><dt>Time zone</dt><dd>{timezoneLabel(detail.lead.timezone)}</dd></div><div><dt>Appointment type</dt><dd>Initial Evaluation</dd></div></dl></Panel><Panel title="Booking history">{detail.appointments.length ? <div className="today-appointments compact">{detail.appointments.map((appointment, index) => <article key={String(appointment.id ?? index)}><time>{date(String(appointment.start_utc ?? appointment.booked_at ?? ''))}</time><div><strong>{displayEnum(appointment.state ?? 'scheduled')}</strong><span>{String(appointment.location ?? detail.lead.location ?? 'Practice')}</span></div><StatusText status={String(appointment.state ?? 'scheduled')} /></article>)}</div> : <Empty title="No booking history" body="Appointment records will appear here after a booking is created." />}</Panel></div></div>;
 }
 
 function LeadHistoryPage({ detail }: { detail: LeadDetail }) {
   const filters = [['all','All activity'],['cadence','Cadence'],['messages','Messages'],['calls','Calls'],['appointments','Appointments']] as const;
   const [filter,setFilter] = useState<(typeof filters)[number][0]>('all');
   const items = filter === 'all' ? undefined : detail.history.filter((item) => activityCategory(item) === filter);
-  return <div className="two-col wide-left"><Panel title="Activity history"><div className="filter-chips">{filters.map(([key,label]) => <button className={filter === key ? 'selected' : ''} type="button" aria-pressed={filter === key} onClick={() => setFilter(key)} key={key}>{label}</button>)}</div><ActivityList detail={detail} items={items} /><Alert>Conversation content remains in this lead’s Conversations tab.</Alert></Panel><Panel title="Record controls"><dl className="detail-list"><div><dt>Owner</dt><dd>{String(detail.lead.owner ?? 'Unassigned')}</dd></div><div><dt>Created</dt><dd>{date(String(detail.lead.created_at ?? ''))}</dd></div><div><dt>Source</dt><dd>{String(detail.lead.source ?? detail.lead.source_system ?? 'Unknown')}</dd></div><div><dt>Last updated</dt><dd>{relative(String(detail.lead.updated_at ?? ''))}</dd></div></dl></Panel></div>;
+  return <div className="two-col wide-left"><Panel title="Activity history"><div className="filter-chips">{filters.map(([key,label]) => <button className={filter === key ? 'selected' : ''} type="button" aria-pressed={filter === key} onClick={() => setFilter(key)} key={key}>{label}</button>)}</div><ActivityList detail={detail} items={items} /><Alert>Conversation content remains in this lead’s Conversations tab.</Alert></Panel><Panel title="Record controls"><dl className="detail-list"><div><dt>Owner</dt><dd>{String(detail.lead.owner ?? 'Unassigned')}</dd></div><div><dt>Created</dt><dd>{date(String(detail.lead.created_at ?? ''))}</dd></div><div><dt>Source</dt><dd>{sourceLabel(detail.lead.source ?? detail.lead.source_system)}</dd></div><div><dt>Last updated</dt><dd>{relative(String(detail.lead.updated_at ?? ''))}</dd></div></dl></Panel></div>;
 }
 
-function ConversationTabs({ id, active }: { id:string; active:'sms'|'calls' }) { return <nav className="conversation-tabs"><Link className={active==='sms'?'active':''} href={`/leads/${id}/conversations/sms`}>● SMS</Link><Link className={active==='calls'?'active':''} href={`/leads/${id}/conversations/calls`}>▤ Call transcripts</Link></nav>; }
+function ConversationTabs({ id, active }: { id:string; active:'sms'|'calls' }) { return <nav className="conversation-tabs" aria-label="Conversations"><Link className={active==='sms'?'active':''} aria-current={active === 'sms' ? 'page' : undefined} href={`/leads/${id}/conversations/sms`}><MessageIcon />SMS</Link><Link className={active==='calls'?'active':''} aria-current={active === 'calls' ? 'page' : undefined} href={`/leads/${id}/conversations/calls`}><PhoneIcon />Call transcripts</Link></nav>; }
 // A flagged lead shows why it was flagged: its next step is on hold until staff
 // act, so the reason is what the card has to say.
 function LeadCard({ lead, onOpen, dragging = false, onDragStart, onDragEnd }: { lead: Lead; onOpen:()=>void; dragging?: boolean; onDragStart?: ()=>void; onDragEnd?: ()=>void }) { const meta=statusMeta[lead.stage]; return <button className={`lead-card ${dragging ? 'is-dragging' : ''}`} type="button" draggable onDragStart={(event) => { setLeadDragData(event, lead.id); onDragStart?.(); }} onDragEnd={onDragEnd} onClick={onOpen}><strong>{lead.full_name}</strong><span className="location"><MapPinIcon />{lead.location ?? 'Not assigned'}</span><StatusBadge stage={lead.stage} paused={lead.cadence_state === 'paused'} />{lead.stage==='cadence'&&lead.cadence_state!=='paused'&&<span className="version">{lead.cadence_version_name ?? 'Cadence'} · {lead.cadence_progress ?? 0} of {lead.cadence_total ?? 0}</span>}{lead.stage === 'attention' && lead.review_reason ? <span className="next attention-reason">Reason: {lead.review_reason}</span> : <span className="next">{lead.stage === 'closed' || lead.stage === 'booked' ? 'Outcome' : 'Next'}: {lead.next_step ?? 'No planned action'}</span>}<span className="sr-only">{meta.label}</span></button>; }
@@ -1187,12 +1242,13 @@ function StatusBadge({ stage, paused = false }: { stage: LeadStage; paused?: boo
   return <span className={`status-pill ${stage}`}><StatusGlyph stage={stage} size="compact" />{statusMeta[stage].label}</span>;
 }
 function StatusGlyph({ stage, size = 'normal' }: { stage: LeadStage; size?: 'compact' | 'normal' | 'large' }) { return <span className={`status-glyph ${stage} ${size}`} aria-hidden="true"><i /></span>; }
-function StatusText({ status }: { status:string }) { const warning=/attention|gated|disabled|unknown/i.test(status); return <span className={`status-text ${warning?'warning':''}`}><i />{status}</span>; }
+function StatusText({ status }: { status:string }) { const tone = statusTone(status); return <span className={`status-text ${tone}`}><i aria-hidden="true" />{displayEnum(status)}</span>; }
 function PageTitle({ title, subtitle, tools }: { title:string; subtitle:string; tools?:ReactNode }) { return <header className="page-heading"><div><h1>{title}</h1><p>{subtitle}</p></div>{tools&&<div className="page-tools">{tools}</div>}</header>; }
 function Panel({ title, children }: { title?:string; children:ReactNode }) { return <section className="panel">{title&&<h2>{title}</h2>}{children}</section>; }
 function DataTable({ heads, children }: { heads:string[]; children:ReactNode }) { return <div className="table-scroll"><table><thead><tr>{heads.map((head,index)=><th key={`${head}-${index}`}>{head}</th>)}</tr></thead><tbody>{children}</tbody></table></div>; }
-function Alert({ children, tone='info' }: { children:ReactNode; tone?:'info'|'warning'|'success' }) { return <div className={`alert ${tone}`}><b>{tone==='warning'?'!':tone==='success'?'✓':'i'}</b><div>{children}</div></div>; }
+function Alert({ children, tone='info' }: { children:ReactNode; tone?:'info'|'warning'|'success' }) { return <div className={`alert ${tone}`}><b aria-hidden="true">{tone==='warning'?'!':tone==='success'?'✓':'i'}</b><div>{children}</div></div>; }
 function Empty({ title, body }: { title:string; body:string }) { return <div className="empty"><h2>{title}</h2><p>{body}</p></div>; }
+function OfflineState({ onRetry }: { onRetry: () => void }) { return <><PageTitle title="Dashboard unavailable" subtitle="The latest data could not be loaded." /><Panel><div className="offline-state"><h2>Connection lost</h2><p>Check the service connection, then try again. No changes were made.</p><button className="primary" type="button" onClick={onRetry}>Retry connection</button></div></Panel></>; }
 function Stat({ label,value,trend }: { label:string; value:string; trend?:string }) { return <div className="stat"><small>{label}</small><strong>{value}</strong>{trend&&<span>{trend}</span>}</div>; }
 function Metric({ label,value,width,tone }: { label:string; value:string; width:string; tone?:string }) { return <div className={`metric ${tone??''}`}><div><span>{label}</span><strong>{value}</strong></div><i><b style={{width}} /></i></div>; }
 function Toggle({ label, enabled, onChange }: {
@@ -1219,28 +1275,26 @@ function Toggle({ label, enabled, onChange }: {
     <b>{saving ? '…' : enabled ? 'ON' : 'OFF'}</b>
   </div>;
 }
-function ActivityList({ detail, items }: { detail:LeadDetail; items?: Array<Record<string,unknown>> }) { const activity=items ?? (detail.history.length?detail.history:[{to_status:'created',reason:'Lead created',source:'System',changed_at:detail.lead.created_at}]); return activity.length ? <div className="activity-list">{activity.map((item,index)=><div key={index}><time>{date(String(item.changed_at))}</time><span>{index===0?'▦':index===1?'☎':index===2?'●':'○'}</span><p><strong>{humanize(String(item.to_status))}</strong><small>{String(item.reason ?? 'Status updated')}</small></p><b>{String(item.source ?? 'System')}</b></div>)}</div> : <Empty title="No matching activity" body="This lead has no activity in the selected category." />; }
-function activityCategory(item: Record<string,unknown>) { const value=`${item.to_status ?? ''} ${item.reason ?? ''} ${item.source ?? ''}`.toLowerCase(); if(/appointment|booked|stride/.test(value))return'appointments';if(/sms|message|twilio/.test(value))return'messages';if(/call|callback|vapi/.test(value))return'calls';return'cadence'; }
+function ActivityIcon({ kind }: { kind: ActivityKind }) {
+  const paths: Record<ActivityKind, ReactNode> = {
+    appointment: <><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M3 10h18M8 3v4M16 3v4m-7 8 2 2 4-4" /></>,
+    link: <><path d="M10 13.5 14 9.5a3 3 0 1 1 4.2 4.2l-3 3a3 3 0 0 1-4.2 0" /><path d="m14 10.5-4 4a3 3 0 1 1-4.2-4.2l3-3a3 3 0 0 1 4.2 0" /></>,
+    handoff: <><circle cx="8" cy="8" r="3" /><path d="M2.5 20a5.5 5.5 0 0 1 11 0m1-8h7m-3-3 3 3-3 3" /></>,
+    call: <path d="M6 3.5 9 3l1.5 4-2 1.5a12 12 0 0 0 5 5l1.5-2 4 1.5-.5 3A2.5 2.5 0 0 1 16 18C9 18 4 13 4 6a2.5 2.5 0 0 1 2-2.5Z" />,
+    message: <path d="M3 5h18v12H9l-5 3v-3H3Z" />,
+    created: <><circle cx="9" cy="8" r="3" /><path d="M3 20a6 6 0 0 1 12 0m3-10v6m-3-3h6" /></>,
+    closed: <><circle cx="12" cy="12" r="9" /><path d="m6 6 12 12" /></>,
+    history: <><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></>,
+  };
+  return <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{paths[kind]}</svg>;
+}
+function ActivityList({ detail, items }: { detail:LeadDetail; items?: Array<Record<string,unknown>> }) { const activity=items ?? (detail.history.length?detail.history:[{to_status:'created',reason:'Lead created',source:'System',changed_at:detail.lead.created_at}]); return activity.length ? <div className="activity-list">{activity.map((item,index)=><div key={String(item.id ?? `${item.changed_at}-${index}`)}><time>{date(String(item.changed_at))}</time><span><ActivityIcon kind={activityKind(item)} /></span><p><strong>{displayEnum(item.to_status)}</strong><small>{String(item.reason ?? 'Status updated')}</small></p><b>{sourceLabel(item.source ?? 'System')}</b></div>)}</div> : <Empty title="No matching activity" body="This lead has no activity in the selected category." />; }
+function activityCategory(item: Record<string,unknown>) { const kind=activityKind(item); if(kind==='appointment')return'appointments';if(kind==='message')return'messages';if(kind==='call')return'calls';return'cadence'; }
 function initials(name:string){return name.split(/\s+/).map((part)=>part[0]).join('').slice(0,2).toUpperCase();}
-// Statuses whose stored name is not what staff should read. 'declined' is
-// only ever reached from a not_interested call outcome, so showing "Declined"
-// described a different event than the one the patient actually gave.
-const STATUS_LABELS: Record<string,string> = {
-  declined: 'Not interested',
-  callback_scheduled: 'Callback scheduled',
-  booking_link_sent: 'Booking link sent',
-  transferred_human: 'Transferred to staff',
-  closed_no_response: 'Closed, no response',
-  do_not_contact: 'Do not contact',
-  invalid_phone: 'Invalid phone number',
-  wrong_person: 'Wrong person',
-};
-function humanize(value:string){return STATUS_LABELS[value] ?? value.replaceAll('_',' ').replace(/\b\w/g,(letter)=>letter.toUpperCase());}
+function humanize(value:string){return displayEnum(value);}
 // Every time in this app is a clinic time. Rendering in the viewer's own zone
 // made a 9:00 AM Pacific callback read as 9:30 PM to staff in India, so the
 // practice timezone is pinned here and shown alongside the value.
-const CLINIC_TZ = 'America/Los_Angeles';
-const CLINIC_TZ_LABEL = 'PT';
 function time(value:string|null|undefined){if(!value)return'—';const parsed=new Date(value);return Number.isNaN(parsed.valueOf())?'—':`${parsed.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',timeZone:CLINIC_TZ})} ${CLINIC_TZ_LABEL}`;}
 function date(value:string){const parsed=new Date(value);return Number.isNaN(parsed.valueOf())?'—':`${parsed.toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit',timeZone:CLINIC_TZ})} ${CLINIC_TZ_LABEL}`;}
 function clinicDateKey(value:Date|string){const parsed=typeof value==='string'?new Date(value):value;return Number.isNaN(parsed.valueOf())?'':parsed.toLocaleDateString('en-CA',{timeZone:CLINIC_TZ});}
@@ -1253,7 +1307,7 @@ function duration(seconds:number){return `${Math.floor(seconds/60)}:${String(sec
 
 
 function exportLeadReport(snapshot: Snapshot) {
-  const rows = [['Lead', 'Status', 'Owner', 'Location', 'Source'], ...snapshot.leads.map((lead) => [lead.full_name, statusMeta[lead.stage].label, lead.owner ?? owners[0], lead.location ?? '', lead.source])];
+  const rows = [['Lead', 'Status', 'Owner', 'Location', 'Source'], ...snapshot.leads.map((lead) => [lead.full_name, statusMeta[lead.stage].label, lead.owner ?? owners[0], lead.location ?? '', sourceLabel(lead.source)])];
   const csv = rows.map((row) => row.map((value) => `"${String(value).replaceAll('"','""')}"`).join(',')).join('\n');
   const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
   const link = document.createElement('a');
@@ -1288,11 +1342,6 @@ function EditLeadDialog({ detail, action, onClose }: {
   const [leadType, setLeadType] = useState(String(lead.lead_type ?? 'Physical Therapy'));
   const [leadLocation, setLeadLocation] = useState(String(lead.location ?? locations[0]));
   const [leadOwner, setLeadOwner] = useState(String(lead.owner ?? owners[0]));
-  useEffect(() => {
-    function closeOnEscape(event: KeyboardEvent) { if (event.key === 'Escape') onClose(); }
-    window.addEventListener('keydown', closeOnEscape);
-    return () => window.removeEventListener('keydown', closeOnEscape);
-  }, [onClose]);
   const fullName = String(lead.full_name ?? '').trim().split(/\s+/);
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -1314,8 +1363,7 @@ function EditLeadDialog({ detail, action, onClose }: {
     if (!result) { setError('The changes could not be saved.'); return; }
     onClose();
   }
-  return <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-    <section className="modal" role="dialog" aria-modal="true" aria-labelledby="edit-lead-title">
+  return <ModalShell labelId="edit-lead-title" onClose={onClose}>
       <header><div><h2 id="edit-lead-title">Edit lead</h2><p>Correct this patient&rsquo;s details. The phone number identifies them and cannot change.</p></div>
         <button className="close-button" type="button" onClick={onClose} aria-label="Close edit lead dialog">×</button></header>
       <form onSubmit={submit}>
@@ -1333,7 +1381,7 @@ function EditLeadDialog({ detail, action, onClose }: {
         {error && <p className="field-error">{error}</p>}
         <footer><button className="secondary" type="button" onClick={onClose} disabled={saving}>Cancel</button><button className="primary" type="submit" disabled={saving}>{saving ? 'Saving…' : 'Save changes'}</button></footer>
       </form>
-    </section></div>;
+    </ModalShell>;
 }
 
 function AddLeadDialog({ defaultLocation, onAdd, onClose }: { defaultLocation: string; onAdd: (lead: LeadCreateInput) => Promise<boolean>; onClose: () => void }) {
@@ -1347,11 +1395,6 @@ function AddLeadDialog({ defaultLocation, onAdd, onClose }: { defaultLocation: s
   const [leadLocation, setLeadLocation] = useState(defaultLocation);
   const [leadOwner, setLeadOwner] = useState(owners[0]);
   const [idempotencyKey] = useState(() => crypto.randomUUID());
-  useEffect(() => {
-    function closeOnEscape(event: KeyboardEvent) { if (event.key === 'Escape') onClose(); }
-    window.addEventListener('keydown', closeOnEscape);
-    return () => window.removeEventListener('keydown', closeOnEscape);
-  }, [onClose]);
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
@@ -1380,5 +1423,5 @@ function AddLeadDialog({ defaultLocation, onAdd, onClose }: { defaultLocation: s
     });
     setSaving(false);
   }
-  return <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><section className="modal" role="dialog" aria-modal="true" aria-labelledby="add-lead-title"><header><div><h2 id="add-lead-title">Add lead</h2><p>Save a lead and schedule their outreach cadence.</p></div><button className="close-button" type="button" onClick={onClose} aria-label="Close add lead dialog">×</button></header><form onSubmit={submit}><div className="form-grid"><label>First name<input name="first_name" autoComplete="given-name" autoFocus required /></label><label>Last name<input name="last_name" autoComplete="family-name" required /></label><label>Phone<span className="phone-field">{!phoneValue.trimStart().startsWith('+') && <i aria-hidden="true">+1</i>}<input name="phone" type="tel" inputMode="tel" autoComplete="tel" value={phoneValue} onChange={(event) => setPhoneValue(event.target.value)} placeholder="949 555 0123 or +91 98205 37790" maxLength={18} aria-invalid={Boolean(phoneError)} required /></span>{phoneError && <small className="field-error">{phoneError}</small>}</label><label>Email<input name="email" type="email" autoComplete="email" placeholder="name@example.com" /></label><label>Date of birth<input name="date_of_birth" type="date" autoComplete="bday" required /></label><label>Who referred this lead?<input name="referred_by" placeholder="Name or organization" /></label><div className="form-select-field form-field-full"><span>Lead type</span><SelectMenu name="lead_type" ariaLabel="Lead type" value={leadType} onChange={setLeadType} options={['Physical Therapy','Wellness'].map((item) => ({ value: item, label: item }))} /></div><div className="form-select-field"><span>Location</span><SelectMenu name="location" ariaLabel="Lead location" value={leadLocation} onChange={setLeadLocation} options={locations.map((item) => ({ value: item, label: item }))} /></div><div className="form-select-field"><span>Owner</span><SelectMenu name="owner" ariaLabel="Lead owner" value={leadOwner} onChange={setLeadOwner} options={owners.map((item) => ({ value: item, label: item }))} /></div></div><footer><button className="secondary" type="button" onClick={onClose} disabled={saving}>Cancel</button><button className="primary" type="submit" disabled={saving}>{saving ? 'Saving…' : 'Add lead'}</button></footer></form></section></div>;
+  return <ModalShell labelId="add-lead-title" onClose={onClose}><header><div><h2 id="add-lead-title">Add lead</h2><p>Save a lead and schedule their outreach cadence.</p></div><button className="close-button" type="button" onClick={onClose} aria-label="Close add lead dialog">×</button></header><form onSubmit={submit}><div className="form-grid"><label>First name<input name="first_name" autoComplete="given-name" autoFocus required /></label><label>Last name<input name="last_name" autoComplete="family-name" required /></label><label>Phone<span className="phone-field">{!phoneValue.trimStart().startsWith('+') && <i aria-hidden="true">+1</i>}<input name="phone" type="tel" inputMode="tel" autoComplete="tel" value={phoneValue} onChange={(event) => setPhoneValue(event.target.value)} placeholder="949 555 0123 or +91 98205 37790" maxLength={18} aria-invalid={Boolean(phoneError)} required /></span>{phoneError && <small className="field-error">{phoneError}</small>}</label><label>Email<input name="email" type="email" autoComplete="email" placeholder="name@example.com" /></label><label>Date of birth<input name="date_of_birth" type="date" autoComplete="bday" required /></label><label>Who referred this lead?<input name="referred_by" placeholder="Name or organization" /></label><div className="form-select-field form-field-full"><span>Lead type</span><SelectMenu name="lead_type" ariaLabel="Lead type" value={leadType} onChange={setLeadType} options={['Physical Therapy','Wellness'].map((item) => ({ value: item, label: item }))} /></div><div className="form-select-field"><span>Location</span><SelectMenu name="location" ariaLabel="Lead location" value={leadLocation} onChange={setLeadLocation} options={locations.map((item) => ({ value: item, label: item }))} /></div><div className="form-select-field"><span>Owner</span><SelectMenu name="owner" ariaLabel="Lead owner" value={leadOwner} onChange={setLeadOwner} options={owners.map((item) => ({ value: item, label: item }))} /></div></div><footer><button className="secondary" type="button" onClick={onClose} disabled={saving}>Cancel</button><button className="primary" type="submit" disabled={saving}>{saving ? 'Saving…' : 'Add lead'}</button></footer></form></ModalShell>;
 }
