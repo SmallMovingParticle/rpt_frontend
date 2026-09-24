@@ -50,8 +50,11 @@ export async function askAssistant(
     body: JSON.stringify({ messages: messages.slice(-12).map(({ role, content }) => ({ role, content })), lead_ids: leadIds, current_path: currentPath }),
   });
   if (!response.ok || !response.body) {
-    const detail = await response.json().catch(() => ({})) as { detail?: string };
-    throw new Error(detail.detail ?? `The assistant is unavailable (${response.status}).`);
+    throw new Error(response.status === 401
+      ? 'Your session has expired. Sign in again.'
+      : response.status === 429
+        ? 'The assistant is busy. Please wait a moment and try again.'
+        : 'The assistant is temporarily unavailable. Please try again.');
   }
   const reader = response.body.getReader();
   const decoder = new TextDecoder();

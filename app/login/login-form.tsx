@@ -21,8 +21,7 @@ export function LoginForm({ configured }: { configured: boolean }) {
         body: JSON.stringify({ email, password }),
       });
       if (!response.ok) {
-        const data = (await response.json().catch(() => ({}))) as { detail?: string };
-        throw new Error(data.detail ?? 'Sign-in failed.');
+        throw new Error(response.status === 401 ? 'The email or password is incorrect.' : 'Sign-in is temporarily unavailable. Please try again.');
       }
       router.replace('/');
       router.refresh();

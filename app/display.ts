@@ -25,7 +25,12 @@ export function displayEnum(value: unknown) {
 
 export function sourceLabel(value: unknown) {
   const normalized = key(value).replace(/_+/g, '_');
-  if (/^(google|n8n)_sheets?$/.test(normalized)) return 'Google Sheets';
+  if (/^(google|n8n)_sheets?$/.test(normalized) || normalized === 'n8n') return 'Google Sheets';
+  if (normalized === 'twilio') return 'Messaging';
+  if (normalized === 'vapi') return 'Phone';
+  if (/^stri(?:de|pe)$/.test(normalized)) return 'Scheduling';
+  if (normalized === 'keap') return 'Staff handoff';
+  if (/^(api|provider|webhook|worker)$/.test(normalized)) return 'System';
   return displayEnum(value);
 }
 
@@ -54,6 +59,61 @@ export function activityKind(item: Record<string, unknown>): ActivityKind {
   if (/created|new lead/.test(value)) return 'created';
   if (/closed|do not contact|dnc/.test(value)) return 'closed';
   return 'history';
+}
+
+export type OperationalContext = 'message' | 'call' | 'appointment' | 'handoff' | 'review' | 'action' | 'assistant';
+
+const OPERATIONAL_DEFAULTS: Record<OperationalContext, string> = {
+  message: 'Message was not sent. Review the phone number before trying again.',
+  call: 'Call could not be completed. Review the phone number before trying again.',
+  appointment: 'Appointment status could not be confirmed. Review it before trying again.',
+  handoff: 'Staff handoff could not be confirmed. Review it before trying again.',
+  review: 'This lead needs staff review before outreach continues.',
+  action: 'The update could not be completed. Please try again.',
+  assistant: 'The assistant is temporarily unavailable. Please try again.',
+};
+
+const TECHNICAL_DETAIL = /\b(?:twilio|vapi|stride|stripe|keap|moonshot|kimi|n8n|supabase|postgres(?:ql)?|database|sql|http|api|webhook|worker|provider|dispatch|transport|socket|timeout|error|exception|traceback|json|status code|response code|bad request|internal server|service unavailable|gateway|fetch|network|connection|failed to|econn\w*|enotfound)\b|\b[45]\d{2}\b|https?:\/\//i;
+const UNCERTAIN_RESULT = /ambiguous|unknown|not reported|not recorded|requires? reconciliation|stale|pending result/i;
+
+export function operationalMessage(value: unknown, context: OperationalContext = 'review') {
+  const text = String(value ?? '').trim().toLowerCase().replace(/[_-]+/g, ' ');
+  if (!text) return OPERATIONAL_DEFAULTS[context];
+  if (/moved to review from the board/.test(text)) return 'Moved to staff review.';
+  if (/wrong (?:phone|number|person)|invalid phone/.test(text)) return 'The phone number needs review before outreach continues.';
+  if (/replaced by sheet lead|phone number change/.test(text)) return 'Contact details changed and need staff review.';
+  if (/do not contact|\bdnc\b/.test(text)) return 'Outreach stopped because this lead should not be contacted.';
+  if (/sms|text|message|twilio|carrier/.test(text)) {
+    return UNCERTAIN_RESULT.test(text) || /delivery status|confirmation/.test(text)
+      ? 'Message delivery could not be confirmed. Review it before trying again.'
+      : OPERATIONAL_DEFAULTS.message;
+  }
+  if (/call|voice|vapi/.test(text)) {
+    return UNCERTAIN_RESULT.test(text) || /outcome/.test(text)
+      ? 'Call result could not be confirmed. Review it before continuing.'
+      : OPERATIONAL_DEFAULTS.call;
+  }
+  if (/appointment|booking|stride|stripe/.test(text)) return OPERATIONAL_DEFAULTS.appointment;
+  if (/handoff|transfer|keap/.test(text)) return OPERATIONAL_DEFAULTS.handoff;
+  return OPERATIONAL_DEFAULTS[context];
+}
+
+export function clientErrorMessage(value: unknown, fallback = OPERATIONAL_DEFAULTS.action) {
+  const text = String(value ?? '').trim();
+  if (!text) return fallback;
+  if (!TECHNICAL_DETAIL.test(text)) return text;
+  const specific = operationalMessage(text, 'action');
+  return specific === OPERATIONAL_DEFAULTS.action ? fallback : specific;
+}
+
+export function activityDescription(item: Record<string, unknown>) {
+  const reason = String(item.reason ?? '').trim();
+  if (!reason) return 'Status updated';
+  if (TECHNICAL_DETAIL.test(reason) || /failed|failure|not delivered|not reported|ambiguous|unknown|replaced by sheet lead|phone number change/i.test(reason)) {
+    const context: OperationalContext = ({ message: 'message', call: 'call', appointment: 'appointment', handoff: 'handoff' } as const)[activityKind(item) as 'message' | 'call' | 'appointment' | 'handoff'] ?? 'review';
+    return operationalMessage(reason, context);
+  }
+  return displayEnum(reason).replace(/\b(?:google|n8n) sheets?\b/gi, 'Google Sheets');
 }
 
 type WallParts = { year: number; month: number; day: number; hour: number; minute: number };
