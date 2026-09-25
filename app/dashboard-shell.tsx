@@ -518,8 +518,10 @@ function LeadsPage({ snapshot, mode, initialQuery, initialStage, router, onAddLe
     const lead = snapshot.leads.find((item) => item.id === id);
     if (!lead || lead.stage === stage) return;
     // Restarting contacts a real patient from day zero, so it is confirmed first.
+    // A booked lead is restartable (a mis-clicked Booked needs an undo), so the
+    // popup names the booking; moving it back to Booked undoes a mis-click here.
     if (stage === 'new' && !window.confirm(
-      `Restart outreach for ${lead.full_name}?
+      `${lead.stage === 'booked' ? `${lead.full_name} is booked. ` : ''}Restart outreach for ${lead.full_name}?
 
 The remaining schedule is discarded and a new cadence begins from today. They will be called and texted again from the first step.`
     )) return;
