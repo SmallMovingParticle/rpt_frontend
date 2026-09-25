@@ -296,7 +296,7 @@ export function DashboardShell({ displayName, localPreview = false }: { displayN
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
-      const data = await response.json().catch(() => ({})) as Lead & { detail?: string };
+      const data = await response.json().catch(() => ({})) as Lead & { detail?: string; warning?: string };
       if (!response.ok) throw new Error(clientErrorMessage(data.detail, 'The lead could not be created. Please try again.'));
       const lead = data as Lead;
       setSnapshot((current) => {
@@ -312,7 +312,7 @@ export function DashboardShell({ displayName, localPreview = false }: { displayN
       });
       setDetail({ lead, events: [], messages: [], calls: [], appointments: [], history: [], message_overrides: [] });
       setAddingLead(false);
-      showNotice(`${lead.full_name} was saved with ${lead.is_test ? 'the 1-minute test cadence' : 'the outreach cadence'}.`);
+      showNotice(`${lead.full_name} was saved with ${lead.is_test ? 'the 1-minute test cadence' : 'the outreach cadence'}.${data.warning ? ` ${data.warning}` : ''}`);
       return true;
     } catch (error) {
       showNotice(clientErrorMessage(error instanceof Error ? error.message : '', 'The lead could not be created. Please try again.'), 'error');
