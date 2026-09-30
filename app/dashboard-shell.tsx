@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { FormEvent, ReactNode, useEffect, useId, useMemo, useRef, useState } from 'react';
+import { cadenceCallNames, cadenceRunScope, cadenceRunSummary, isCadenceStep, reorderCadenceSteps, splitCadenceRuns, type CadenceEvent } from './cadence';
 import { CadenceStep, CadenceVersion, emptySnapshot, Lead, LeadCreateInput, LeadDetail, LeadStage, Snapshot } from './dashboard-data';
 import { AssistantDock, AssistantPage, ThemeToggle, setLeadDragData } from './assistant';
 import { activityDescription, activityKind, ActivityKind, clientErrorMessage, clinicDateTimeValue, clinicWallTimeToIso, CLINIC_TZ, CLINIC_TZ_LABEL, displayEnum, operationalMessage, sourceLabel, statusTone, timezoneLabel } from './display';
@@ -92,6 +93,14 @@ function ArrowIcon({ direction }: { direction: 'up' | 'down' }) {
   return <svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor"
     strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
     {direction === 'up' ? <path d="m5 11 5-5 5 5M10 6v9" /> : <path d="m5 9 5 5 5-5M10 14V5" />}
+  </svg>;
+}
+
+function GripIcon() {
+  return <svg viewBox="0 0 16 20" width="14" height="18" fill="currentColor" aria-hidden="true">
+    <circle cx="5" cy="5" r="1.2" /><circle cx="11" cy="5" r="1.2" />
+    <circle cx="5" cy="10" r="1.2" /><circle cx="11" cy="10" r="1.2" />
+    <circle cx="5" cy="15" r="1.2" /><circle cx="11" cy="15" r="1.2" />
   </svg>;
 }
 
@@ -830,12 +839,19 @@ function CadenceEditor({ version, templates, action, local, onChanged }: { versi
   const [name, setName] = useState(version.name);
   const [steps, setSteps] = useState<CadenceStep[]>(version.steps);
   const [selectedStep, setSelectedStep] = useState(0);
+  const [draggingStep, setDraggingStep] = useState<number | null>(null);
+  const [dropTarget, setDropTarget] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
   const step = steps[selectedStep];
   const savedTemplates = templates.filter((template) => Boolean(template.deletable) && Boolean(template.is_active) && String(template.body ?? '').trim());
   const valid = Boolean(name.trim()) && steps.some((step) => step.is_active) && steps.every((step) => step.description.trim() && (step.channel !== 'sms' || step.sms_body?.trim()));
   function update(index: number, change: Partial<CadenceStep>) { setSteps((current) => current.map((step,position) => position === index ? { ...step, ...change } : step)); }
-  function move(index: number, offset: number) { setSteps((current) => { const target=index+offset;if(target<0||target>=current.length)return current;const next=[...current];[next[index],next[target]]=[next[target],next[index]];return next; }); setSelectedStep((current) => current + offset); }
+  function reorder(from: number, to: number) {
+    if (from === to || to < 0 || to >= steps.length) return;
+    setSteps((current) => reorderCadenceSteps(current, from, to));
+    setSelectedStep(to);
+  }
+  function move(index: number, offset: number) { reorder(index, index + offset); }
   function addStep() { setSteps((current) => [...current, { step_order: current.length, day_offset: current.at(-1)?.day_offset ?? 0, channel: 'call', description: 'New outreach action', is_active: true, sms_body: null }]); setSelectedStep(steps.length); }
   function deleteStep() { if (steps.length === 1) return; setSteps((current) => current.filter((_, position) => position !== selectedStep)); setSelectedStep((current) => Math.max(0, Math.min(current, steps.length - 2))); }
   async function save(activate: boolean) {
@@ -849,11 +865,24 @@ function CadenceEditor({ version, templates, action, local, onChanged }: { versi
   }
   return <Panel title={local ? 'Personalized plan editor' : 'Draft cadence editor'}><div className="cadence-editor">
     <label className="field-label">{local ? 'Plan name' : 'Version name'}<input value={name} maxLength={120} onChange={(event) => setName(event.target.value)} /></label>
-    <div className="plan-builder"><aside className="plan-step-nav"><header><div><strong>Plan steps</strong><small>Select a step to edit</small></div><span>{steps.length}</span></header><div>{steps.map((item,index)=><button type="button" className={index===selectedStep?'selected':''} aria-pressed={index===selectedStep} onClick={()=>setSelectedStep(index)} key={item.id ?? index}><span>{index+1}</span><div><strong>{item.description || `Step ${index+1}`}</strong><small>Day {item.day_offset} · {item.channel==='call'?'Phone call':'Text message'}{item.is_active?'':' · Disabled'}</small></div></button>)}</div><button className="secondary full" type="button" onClick={addStep}>+ Add step</button></aside>
+    <div className="plan-builder"><aside className="plan-step-nav"><header><div><strong>Plan steps</strong><small>Drag to reorder or select a step to edit</small></div><span>{steps.length}</span></header><div>{steps.map((item,index)=><button
+      type="button"
+      draggable
+      className={`${index===selectedStep?'selected ':''}${draggingStep===index?'is-dragging ':''}${dropTarget===index&&draggingStep!==index?'drop-target':''}`.trim()}
+      aria-pressed={index===selectedStep}
+      aria-label={`Step ${index + 1}: ${item.description}. Day ${item.day_offset}. Drag to reorder.`}
+      onClick={()=>setSelectedStep(index)}
+      onDragStart={(event)=>{event.dataTransfer.effectAllowed='move';event.dataTransfer.setData('text/plain',String(index));setDraggingStep(index);setDropTarget(index);}}
+      onDragEnter={()=>setDropTarget(index)}
+      onDragOver={(event)=>{event.preventDefault();event.dataTransfer.dropEffect='move';setDropTarget(index);}}
+      onDrop={(event)=>{event.preventDefault();const from=Number(event.dataTransfer.getData('text/plain'));if(Number.isInteger(from))reorder(from,index);setDraggingStep(null);setDropTarget(null);}}
+      onDragEnd={()=>{setDraggingStep(null);setDropTarget(null);}}
+      key={item.id ?? index}
+    ><span className="plan-step-number">{index+1}</span><div><strong>{item.description || `Step ${index+1}`}</strong><small>Day {item.day_offset} · {item.channel==='call'?'Phone call':'Text message'}{item.is_active?'':' · Disabled'}</small></div><span className="plan-drag-handle"><GripIcon /></span></button>)}</div><button className="secondary full" type="button" onClick={addStep}>+ Add step</button></aside>
       {step && <fieldset className="plan-step-detail"><legend className="sr-only">Edit step {selectedStep+1}</legend><header><div><span>Step {selectedStep+1}</span><h3>{step.description || 'Untitled step'}</h3></div><label className="enabled-check"><input type="checkbox" checked={step.is_active} onChange={(event)=>update(selectedStep,{is_active:event.target.checked})} />Enabled</label></header>
         <div className="step-fields"><label>Day<input type="number" min="0" max="365" value={step.day_offset} onChange={(event)=>update(selectedStep,{day_offset:Number(event.target.value)})} /></label><div className="step-select-field"><span>Channel</span><SelectMenu ariaLabel={`Channel for step ${selectedStep + 1}`} value={step.channel} onChange={(value)=>update(selectedStep,{channel:value as 'call'|'sms',sms_body:value==='sms'?(step.sms_body??''):null})} options={[{ value: 'call', label: 'Phone call' }, { value: 'sms', label: 'Text message' }]} /></div><label className="step-action">Step description<input value={step.description} maxLength={300} onChange={(event)=>update(selectedStep,{description:event.target.value})} /></label>
           {step.channel==='sms'&&<div className="step-message"><div className="step-message-toolbar"><label htmlFor={`step-message-${version.id}-${selectedStep}`}>Text message</label>{savedTemplates.length ? <SelectMenu className="template-import" ariaLabel={`Import a saved template into step ${selectedStep + 1}`} value="" onChange={(value)=>{const template=savedTemplates.find((item)=>String(item.id)===value);if(template)update(selectedStep,{sms_body:String(template.body)});}} options={[{value:'',label:'Import saved template'},...savedTemplates.map((template)=>({value:String(template.id),label:smsTemplateName(template)}))]} /> : <small>No saved templates available</small>}</div><textarea id={`step-message-${version.id}-${selectedStep}`} value={step.sms_body??''} maxLength={1600} onChange={(event)=>update(selectedStep,{sms_body:event.target.value})} /></div>}
-        </div><footer><div className="step-reorder"><button type="button" className="icon-button" disabled={selectedStep===0||steps[selectedStep-1]?.day_offset!==step.day_offset} onClick={()=>move(selectedStep,-1)}><ArrowIcon direction="up" />Move earlier</button><button type="button" className="icon-button" disabled={selectedStep===steps.length-1||steps[selectedStep+1]?.day_offset!==step.day_offset} onClick={()=>move(selectedStep,1)}><ArrowIcon direction="down" />Move later</button></div><button type="button" className="icon-button danger" disabled={steps.length===1} onClick={deleteStep}>Delete step</button></footer></fieldset>}
+        </div><footer><div className="step-reorder"><button type="button" className="icon-button" disabled={selectedStep===0} onClick={()=>move(selectedStep,-1)}><ArrowIcon direction="up" />Move earlier</button><button type="button" className="icon-button" disabled={selectedStep===steps.length-1} onClick={()=>move(selectedStep,1)}><ArrowIcon direction="down" />Move later</button></div><button type="button" className="icon-button danger" disabled={steps.length===1} onClick={deleteStep}>Delete step</button></footer></fieldset>}
     </div><div className="editor-actions"><button className="secondary" type="button" disabled={!valid||saving} onClick={()=>save(false)}>{saving?'Saving…':local?'Save for later':'Save draft'}</button><button className="primary" type="button" disabled={!valid||saving} onClick={()=>save(true)}>{saving?'Saving…':local?'Save and use plan':'Activate version'}</button></div>
   </div></Panel>;
 }
@@ -939,8 +968,9 @@ function LeadFrame({ detail, tab, action, children }: { detail: LeadDetail; tab:
   // Count only the current cadence run: a restarted lead keeps its earlier
   // events, and including them read as "12 of 16" on an eight-step cadence.
   const currentRun = splitCadenceRuns(detail.events).at(-1) ?? [];
-  const progress = currentRun.filter((event) => event.executed_at).length;
-  const total = currentRun.length;
+  const currentSummary = cadenceRunSummary(currentRun);
+  const progress = currentSummary.attempted;
+  const total = currentSummary.expectedSteps ?? currentRun.filter(isCadenceStep).length;
   const [busy,setBusy] = useState(false);
   const [editing,setEditing] = useState(false);
   const cadencePaused = lead.cadence_state === 'paused';
@@ -979,48 +1009,22 @@ function SmsPage({ detail, action }: { detail: LeadDetail; action: DashboardActi
 }
 
 function CallsPage({ detail }: { detail: LeadDetail }) {
-  const [selected,setSelected]=useState(detail.calls[0]);
+  const searchParams = useSearchParams();
+  const requestedCall = searchParams.get('call');
+  const [selectedId, setSelectedId] = useState(String(detail.calls[0]?.id ?? ''));
+  const names = useMemo(() => cadenceCallNames(detail.events, detail.calls), [detail.events, detail.calls]);
+  const selected = detail.calls.find((call) => String(call.id) === (requestedCall ?? selectedId)) ?? detail.calls[0];
+  const callTitle = (call: Record<string, unknown>) => names.get(String(call.id)) ?? `Call on ${date(String(call.dialed_at))}`;
+  const selectedTitle = selected ? callTitle(selected) : 'Call transcript';
   const turns=String(selected?.transcript_text ?? '').split('\n').filter(Boolean);
-  return <><ConversationTabs id={String(detail.lead.id)} active="calls" /><div className="call-layout"><Panel title="Call sessions">{detail.calls.length ? detail.calls.map((call)=><button type="button" className={`call-session ${selected?.id===call.id?'selected':''}`} onClick={()=>setSelected(call)} key={String(call.id)}><span><PhoneIcon size={18} /></span><div><strong>{date(String(call.dialed_at))} · {duration(Number(call.duration_seconds))}</strong><small>{displayEnum(call.answer_state ?? 'pending')}</small></div></button>) : <Empty title="No call sessions" body="Completed and attempted calls will appear here." />}</Panel><Panel title="Call transcript"><div className="transcript">{turns.length ? turns.map((turn,index)=>{const [speaker,...words]=turn.split(':');return <div key={index}><b>{initials(speaker)}</b><p><strong>{speaker}</strong>{words.join(':')}</p></div>}) : <Empty title="No text transcript" body={selected ? 'This call did not produce transcript text.' : 'Choose a call session to view its transcript.'} />}</div>{Boolean(selected?.summary_text) && <Alert><strong>AI call summary</strong><br />{String(selected.summary_text)}</Alert>}</Panel><Panel title="Call context">{selected ? <><dl className="detail-list"><div><dt>Call result</dt><dd><StatusText status={String(selected.ended_reason ?? selected.answer_state ?? 'Pending')} /></dd></div><div><dt>Record</dt><dd>Call session</dd></div><div><dt>Duration</dt><dd>{duration(Number(selected.duration_seconds ?? 0))}</dd></div><div><dt>Next action</dt><dd>{String(detail.lead.next_step ?? 'No planned event')}</dd></div></dl><Alert>Text transcript only. No audio recording is stored or exposed.</Alert></> : <Empty title="No call selected" body="Call details will appear after a call session is available." />}</Panel></div></>;
-}
-
-function splitCadenceRuns(events: Array<Record<string, unknown>>) {
-  // A restart builds a fresh set of events in one go, so everything created in
-  // the same instant belongs to the same run. Grouping on that is exact.
-  //
-  // The earlier approach watched for the day offset going backwards, which broke
-  // as soon as two runs overlapped in time: sorted by schedule the days read
-  // 0,0,0,0,1,1,3,3... and never stepped back, so both runs rendered as one list.
-  const batches = new Map<string, Array<Record<string, unknown>>>();
-  const order: string[] = [];
-  for (const event of events) {
-    // The creation batch, and only that. Keying on cadence_version_id first
-    // looked tidier but collapsed every run into one: a restart reuses the same
-    // active version, so three runs shared version 7 and rendered as a single
-    // 17-step list reading Day 0..13, Day 0, Day 0, Day 1...
-    const key = String(event.created_at ?? event.id);
-    if (!batches.has(key)) { batches.set(key, []); order.push(key); }
-    batches.get(key)!.push(event);
+  function selectCall(call: Record<string, unknown>) {
+    const id = String(call.id);
+    setSelectedId(id);
+    const next = new URLSearchParams(searchParams.toString());
+    next.set('call', id);
+    window.history.replaceState(null, '', `?${next.toString()}`);
   }
-
-  const runs: Array<Array<Record<string, unknown>>> = [];
-  for (const key of order) {
-    const batch = batches.get(key)!;
-    // A callback is added on its own, outside any run. It belongs to whichever
-    // run it interrupted, not to a run of its own.
-    const isStandalone = batch.every((event) => event.cadence_step_id === null || event.cadence_step_id === undefined);
-    if (isStandalone && runs.length) runs[runs.length - 1].push(...batch);
-    else runs.push(batch);
-  }
-  if (!runs.length) return [];
-
-  // Within a run, keep the order the schedule actually runs in.
-  for (const run of runs) {
-    run.sort((a, b) => String(a.scheduled_for ?? '').localeCompare(String(b.scheduled_for ?? '')));
-  }
-  // Oldest run first, so the newest is last and reads as "current".
-  runs.sort((a, b) => String(a[0].created_at ?? '').localeCompare(String(b[0].created_at ?? '')));
-  return runs;
+  return <><ConversationTabs id={String(detail.lead.id)} active="calls" /><div className="call-layout"><Panel title="Call sessions">{detail.calls.length ? detail.calls.map((call)=><button type="button" className={`call-session ${selected?.id===call.id?'selected':''}`} onClick={()=>selectCall(call)} key={String(call.id)}><span><PhoneIcon size={18} /></span><div><strong>{callTitle(call)}</strong><small>{date(String(call.dialed_at))} · {duration(Number(call.duration_seconds))} · {displayEnum(call.answer_state ?? 'pending')}</small></div></button>) : <Empty title="No call sessions" body="Completed and attempted calls will appear here." />}</Panel><Panel title={selected ? `${selectedTitle} transcript` : selectedTitle}><div className="transcript">{turns.length ? turns.map((turn,index)=>{const [speaker,...words]=turn.split(':');return <div key={index}><b>{initials(speaker)}</b><p><strong>{speaker}</strong>{words.join(':')}</p></div>}) : <Empty title="No text transcript" body={selected ? 'This call did not produce transcript text.' : 'Choose a call session to view its transcript.'} />}</div>{Boolean(selected?.summary_text) && <Alert><strong>AI call summary</strong><br />{String(selected.summary_text)}</Alert>}</Panel><Panel title="Call context">{selected ? <><dl className="detail-list"><div><dt>Call result</dt><dd><StatusText status={String(selected.ended_reason ?? selected.answer_state ?? 'Pending')} /></dd></div><div><dt>Record</dt><dd>{selectedTitle}</dd></div><div><dt>Duration</dt><dd>{duration(Number(selected.duration_seconds ?? 0))}</dd></div><div><dt>Next action</dt><dd>{String(detail.lead.next_step ?? 'No planned event')}</dd></div></dl><Alert>Text transcript only. No audio recording is stored or exposed.</Alert></> : <Empty title="No call selected" body="Call details will appear after a call session is available." />}</Panel></div></>;
 }
 
 function CadenceChannelIcon({ channel }: { channel: string }) {
@@ -1032,7 +1036,7 @@ function CadenceChannelIcon({ channel }: { channel: string }) {
   </svg>;
 }
 
-type RunEvent = Record<string, unknown>;
+type RunEvent = CadenceEvent;
 
 function runRan(run: RunEvent[]) {
   return run.filter((event) => event.executed_at).map((event) => String(event.executed_at)).sort();
@@ -1059,9 +1063,9 @@ function runTallies(run: RunEvent[]) {
     calls: run.filter((event) => event.channel === 'call' && event.executed_at).length,
     textsSent: texts.filter((event) => !smsBlocked(event)).length,
     textsBlocked: texts.filter((event) => smsBlocked(event)).length,
-    cancelled: run.filter((event) => event.status === 'skipped').length,
-    planned: run.filter((event) => event.status === 'planned').length,
-    ran: run.filter((event) => event.executed_at).length,
+    cancelled: run.filter((event) => isCadenceStep(event) && event.status === 'skipped').length,
+    planned: run.filter((event) => isCadenceStep(event) && event.status === 'planned').length,
+    ran: run.filter((event) => isCadenceStep(event) && event.executed_at).length,
   };
 }
 
@@ -1081,15 +1085,18 @@ function stepResult(event: RunEvent, restarted = true): { tone: string; label: s
   return { tone: outcome === 'booked' ? 'ok' : 'plain', label: humanize(outcome) };
 }
 
-function CadenceRunCard({ run, index, total, pauses, onReschedule }: {
+function CadenceRunCard({ run, index, total, pauses, leadId, callIdsByEvent, onReschedule }: {
   run: RunEvent[];
   index: number;
   total: number;
   pauses: Array<{ paused: string; resumed: string | null }>;
+  leadId: string;
+  callIdsByEvent: Map<string, string[]>;
   onReschedule?: (event: RunEvent) => void;
 }) {
   const isCurrent = index === total - 1;
   const tally = runTallies(run);
+  const summary = cadenceRunSummary(run);
   const ran = runRan(run);
   const span = ran.length ? date(ran[0]) + ' → ' + time(ran[ran.length - 1]) : 'Not started';
   const length = ran.length > 1 ? ' · ' + runDuration(ran[0], ran[ran.length - 1]) : '';
@@ -1097,12 +1104,8 @@ function CadenceRunCard({ run, index, total, pauses, onReschedule }: {
   // Cancelled steps collapse into one row: seven near-identical rows say the
   // same nothing seven times and bury the steps that did run.
   const shown = run.filter((event) => event.status !== 'skipped');
-  const cancelled = run.filter((event) => event.status === 'skipped');
-
-  const label = tally.planned > 0 ? 'In progress'
-    : tally.cancelled > 0 ? (isCurrent ? 'Ended after ' : 'Cut short after ') + tally.ran + ' step' + (tally.ran === 1 ? '' : 's')
-    : 'Ran in full';
-  const tone = tally.cancelled > 0 || tally.planned > 0 ? 'warn' : 'ok';
+  const cancelled = run.filter((event) => isCadenceStep(event) && event.status === 'skipped');
+  const badge = isCurrent && summary.inProgress ? `Current · ${summary.label.toLowerCase()}` : summary.label;
 
   // A pause belongs to the run it interrupted. Shown before the first step that
   // ran after the resume, otherwise four steps sharing one timestamp read as a
@@ -1120,7 +1123,7 @@ function CadenceRunCard({ run, index, total, pauses, onReschedule }: {
     return match;
   }
 
-  return <details className={'cadence-run' + (isCurrent ? ' current' : '')} open={isCurrent}>
+  return <details className={'cadence-run' + (isCurrent && summary.inProgress ? ' current' : '')} open={isCurrent}>
     <summary>
       <span className="run-chevron" aria-hidden="true">
         <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor"
@@ -1128,7 +1131,7 @@ function CadenceRunCard({ run, index, total, pauses, onReschedule }: {
       </span>
       <span className="run-id">
         <span className="run-title">Outreach {index + 1}
-          <span className={'run-badge ' + tone}>{isCurrent ? 'Current · ' + label.toLowerCase() : label}</span>
+          <span className={'run-badge ' + summary.tone}>{badge}</span>
         </span>
         <span className="run-when">{span}{length}</span>
       </span>
@@ -1145,6 +1148,7 @@ function CadenceRunCard({ run, index, total, pauses, onReschedule }: {
       {shown.map((event, position) => {
         const result = stepResult(event, !isCurrent);
         const pause = pauseBefore(event);
+        const callIds = callIdsByEvent.get(String(event.id)) ?? [];
         return <div key={String(event.id)}>
           {pause && <p className="run-interrupt">Paused {time(pause.paused)} → resumed {time(pause.resumed)} · overdue steps then ran together</p>}
           <div className={'run-step ' + result.tone}>
@@ -1155,8 +1159,11 @@ function CadenceRunCard({ run, index, total, pauses, onReschedule }: {
               <span className={'run-step-result ' + result.tone}>{result.label}</span>
             </span>
             <span className="run-step-time">{event.executed_at ? stamp(String(event.executed_at)) : 'due ' + stamp(String(event.scheduled_for))}</span>
-            {onReschedule && event.status === 'planned'
-              && <button className="text-action" type="button" onClick={() => onReschedule(event)}>Edit</button>}
+            <span className="run-step-actions">
+              {callIds.map((callId, callIndex) => <Link className="text-action" href={`/leads/${leadId}/conversations/calls?call=${encodeURIComponent(callId)}`} key={callId}>{callIds.length > 1 ? `Transcript ${callIndex + 1}` : 'View transcript'}</Link>)}
+              {onReschedule && event.status === 'planned'
+                && <button className="text-action" type="button" onClick={() => onReschedule(event)}>Edit</button>}
+            </span>
           </div>
         </div>;
       })}
@@ -1173,8 +1180,23 @@ function CadenceRunCard({ run, index, total, pauses, onReschedule }: {
 function LeadCadencePage({ detail, action, templates }: { detail: LeadDetail; action: DashboardAction; templates: Array<Record<string, unknown>> }) {
   const runs = splitCadenceRuns(detail.events);
   const current = runs[runs.length - 1] ?? [];
-  const tally = runTallies(current);
+  const currentSummary = cadenceRunSummary(current);
+  const currentTotal = currentSummary.expectedSteps ?? current.filter(isCadenceStep).length;
+  const [historyFilter, setHistoryFilter] = useState<'all' | 'standard' | 'personalized'>('all');
   const [rescheduling, setRescheduling] = useState<RunEvent | null>(null);
+  const visibleRuns = runs
+    .map((run, index) => ({ run, index, scope: cadenceRunScope(run) }))
+    .filter((item) => historyFilter === 'all' || item.scope === historyFilter);
+  const callIdsByEvent = useMemo(() => {
+    const grouped = new Map<string, string[]>();
+    const calls = [...detail.calls].sort((a, b) => String(a.dialed_at ?? '').localeCompare(String(b.dialed_at ?? '')));
+    for (const call of calls) {
+      if (call.outreach_event_id === null || call.outreach_event_id === undefined) continue;
+      const eventId = String(call.outreach_event_id);
+      grouped.set(eventId, [...(grouped.get(eventId) ?? []), String(call.id)]);
+    }
+    return grouped;
+  }, [detail.calls]);
 
   // Pause and resume arrive as separate audit rows; pair them so a card can show
   // one interruption rather than two unexplained entries.
@@ -1190,12 +1212,15 @@ function LeadCadencePage({ detail, action, templates }: { detail: LeadDetail; ac
       <p className="panel-subtitle">
         {runs.length > 1
           ? `${runs.length} outreach runs · ${detail.cadence_version?.name ?? 'active cadence'}`
-          : `${detail.cadence_version?.name ?? 'Active cadence'} · ${tally.ran} of ${current.length} steps`}
+          : `${detail.cadence_version?.name ?? 'Active cadence'} · ${currentSummary.attempted} of ${currentTotal} steps`}
       </p>
       {runs.length === 0
         ? <Empty title="No outreach scheduled" body="This lead has no cadence steps yet." />
-        : <div className="cadence-runs">
-            {runs.map((run, index) => <div key={String(run[0].created_at ?? index)}>
+        : <><div className="cadence-history-filter" role="group" aria-label="Filter outreach history">
+            {([['all','All'],['standard','Standard outreach'],['personalized','Personalized outreach']] as const).map(([value, label]) => <button type="button" className={historyFilter === value ? 'selected' : ''} aria-pressed={historyFilter === value} onClick={() => setHistoryFilter(value)} key={value}>{label}</button>)}
+          </div>
+          {visibleRuns.length ? <div className="cadence-runs">
+            {visibleRuns.map(({ run, index }) => <div key={String(run[0].created_at ?? index)}>
               {index > 0 && <p className="run-connector">
                 Restarted by staff · moved back to New at {date(String(run[0].created_at ?? ''))}
               </p>}
@@ -1204,10 +1229,12 @@ function LeadCadencePage({ detail, action, templates }: { detail: LeadDetail; ac
                 index={index}
                 total={runs.length}
                 pauses={pauses}
+                leadId={String(detail.lead.id)}
+                callIdsByEvent={callIdsByEvent}
                 onReschedule={index === runs.length - 1 ? setRescheduling : undefined}
               />
             </div>)}
-          </div>}
+          </div> : <Empty title={`No ${historyFilter} outreach runs`} body="This lead has no outreach history in the selected category." />}</>}
     </Panel>
     <div className="stack"><Panel title="Personalized outreach"><p className="panel-subtitle">Changes here apply only to {String(detail.lead.full_name)}.</p><dl className="detail-list"><div><dt>Lead plan</dt><dd>{detail.cadence_version?.name ?? 'Standard outreach plan'}</dd></div>{detail.lead.global_version_name ? <div><dt>Global default</dt><dd>{String(detail.lead.global_version_name)}</dd></div> : null}<div><dt>Time zone</dt><dd>{timezoneLabel(detail.lead.timezone)}</dd></div><div><dt>Preferred location</dt><dd>{String(detail.lead.location ?? 'Not assigned')}</dd></div><div><dt>Next send window</dt><dd>Business hours</dd></div></dl><CadenceStudio action={action} templates={templates} leadId={String(detail.lead.id)} /></Panel><Panel title="Contact rules"><Toggle label="Do not contact" enabled={String(detail.lead.status) === 'do_not_contact'} onChange={(next) => action(`leads/${detail.lead.id}/contact-rules`, 'POST', { do_not_contact: next })} /><p className="muted">Blocks calls and texts, cancels the remaining schedule, and moves the lead to Closed. Turning it off releases the block but does not restart outreach.</p></Panel></div>
   </div>{rescheduling && <RescheduleDialog event={rescheduling} leadId={String(detail.lead.id)} action={action} onClose={() => setRescheduling(null)} />}</>;
