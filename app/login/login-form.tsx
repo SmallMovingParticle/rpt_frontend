@@ -5,7 +5,7 @@ import { FormEvent, useState } from 'react';
 
 export function LoginForm({ configured }: { configured: boolean }) {
   const router = useRouter();
-  const [email, setEmail] = useState('');
+  const [employeeId, setEmployeeId] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -18,10 +18,10 @@ export function LoginForm({ configured }: { configured: boolean }) {
       const response = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ employee_id: employeeId, password }),
       });
       if (!response.ok) {
-        throw new Error(response.status === 401 ? 'The email or password is incorrect.' : 'Sign-in is temporarily unavailable. Please try again.');
+        throw new Error(response.status === 401 ? 'The login ID or password is incorrect.' : 'Sign-in is temporarily unavailable. Please try again.');
       }
       router.replace('/');
       router.refresh();
@@ -39,18 +39,17 @@ export function LoginForm({ configured }: { configured: boolean }) {
 
         {!configured && (
           <p className="login-error" role="alert">
-            Sign-in is not configured. Set DASHBOARD_STAFF_PASSWORD,
-            DASHBOARD_SESSION_SECRET and DASHBOARD_ALLOWED_EMAILS.
+            Sign-in is unavailable. Please contact your administrator.
           </p>
         )}
 
         <label className="field-label">
-          Work email
+          Employee ID or email
           <input
-            type="email"
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
+            value={employeeId}
+            onChange={(event) => setEmployeeId(event.target.value.toLowerCase())}
             autoComplete="username"
+            maxLength={254}
             required
           />
         </label>

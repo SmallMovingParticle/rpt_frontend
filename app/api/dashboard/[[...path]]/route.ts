@@ -44,18 +44,31 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path?: s
     return NextResponse.json({ detail: 'request too large' }, { status: 413 });
   }
 
-  const response = await fetch(`${origin}/api/v1/dashboard/${relativePath}${request.nextUrl.search}`, {
-    method: request.method,
-    cache: 'no-store',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-Dashboard-Token': token,
-      'X-Dashboard-User-ID': user.userId,
-      'X-Dashboard-User-Email': user.email,
-      'X-Trace-ID': crypto.randomUUID(),
-    },
-    body: request.method === 'GET' ? undefined : await request.text(),
-  });
+  const requestBody = request.method === 'GET' ? undefined : await request.text();
+  let response: Response;
+  try {
+    response = await fetch(`${origin}/api/v1/dashboard/${relativePath}${request.nextUrl.search}`, {
+      method: request.method,
+      cache: 'no-store',
+      signal: AbortSignal.timeout(relativePath.startsWith('assistant') ? 90_000 : 20_000),
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Dashboard-Token': token,
+        'X-Dashboard-User-ID': user.employeeId,
+        'X-Dashboard-User-Name': encodeURIComponent(user.displayName),
+        'X-Dashboard-User-Role': user.role,
+        'X-Trace-ID': crypto.randomUUID(),
+      },
+      body: requestBody,
+    });
+  } catch {
+    // No upstream URL, headers, patient payload, or raw exception enters logs.
+    console.warn('[dashboard proxy] backend connection unavailable');
+    return NextResponse.json({ detail: 'The dashboard service is unavailable. Please try again.' }, {
+      status: 503,
+      headers: { 'Cache-Control': 'no-store' },
+    });
+  }
 
   return new NextResponse(response.body, {
     status: response.status,

@@ -24,6 +24,7 @@ export type Lead = {
   cadence_total?: number;
   cadence_version_name?: string | null;
   owner?: string;
+  owner_user_id?: string | null;
   date_of_birth?: string;
   referred_by?: string;
   lead_type?: 'Physical Therapy' | 'Wellness';
@@ -68,6 +69,7 @@ export type LeadCreateInput = {
   lead_type: 'Physical Therapy' | 'Wellness';
   location: string;
   owner: string;
+  owner_user_id?: string | null;
   contact_consent: true;
 };
 
@@ -110,9 +112,28 @@ export type LeadDetail = {
   calls: Array<Record<string, unknown>>;
   appointments: Array<Record<string, unknown>>;
   history: Array<Record<string, unknown>>;
+  activity: ActivityEntry[];
   message_overrides: Array<Record<string, unknown>>;
   cadence_actions?: Array<Record<string, unknown>>;
   cadence_version?: CadenceVersion | null;
+};
+
+export type ActivityEntry = {
+  id: string;
+  action: string;
+  occurred_at: string;
+  actor_type: 'employee' | 'automation';
+  actor_name: string;
+  category: 'employee' | 'calls' | 'messages' | 'appointments' | 'cadence';
+  title: string;
+  details: Record<string, unknown>;
+};
+
+export type StaffMember = {
+  user_id: string;
+  employee_id: string;
+  display_name: string;
+  role: 'super_admin' | 'employee';
 };
 
 export const emptySnapshot: Snapshot = {

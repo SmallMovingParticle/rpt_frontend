@@ -4,6 +4,7 @@ import { DragEvent, FormEvent, KeyboardEvent, ReactNode, useEffect, useRef, useS
 import Link from 'next/link';
 import { Lead } from './dashboard-data';
 import { displayEnum } from './display';
+import { dashboardFetch } from './dashboard-client';
 
 // The backend assistant only ever sees leads the staff member has explicitly
 // loaded (at most three), so loading a lead is the first thing the UI does.
@@ -45,7 +46,7 @@ export function saveChats(chats: Chat[]) {
 export async function askAssistant(
   messages: ChatMessage[], leadIds: string[], currentPath: string, onDelta: (text: string) => void, signal?: AbortSignal,
 ): Promise<void> {
-  const response = await fetch('/api/dashboard/assistant/stream', {
+  const response = await dashboardFetch('/api/dashboard/assistant/stream', {
     method: 'POST', signal, headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ messages: messages.slice(-12).map(({ role, content }) => ({ role, content })), lead_ids: leadIds, current_path: currentPath }),
   });
