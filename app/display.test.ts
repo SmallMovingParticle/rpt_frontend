@@ -1,6 +1,22 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { activityDescription, activityKind, clientErrorMessage, clinicWallTimeToIso, displayEnum, operationalMessage, sourceLabel, statusTone, timezoneLabel } from './display.ts';
+import { activityDescription, activityKind, clientErrorMessage, clinicWallTimeToIso, displayEnum, operationalMessage, sourceLabel, statusTone, teamActivity, timezoneLabel } from './display.ts';
+import type { ActivityEntry } from './dashboard-data';
+
+test('team activity shows staff changes across categories but never automated events', () => {
+  const entry: ActivityEntry = { id: 'created', action: 'lead.created', occurred_at: '2026-10-02T12:00:00Z', actor_type: 'employee', actor_name: 'Test Staff', category: 'employee', title: 'Lead created', details: {} };
+  const entries: ActivityEntry[] = [entry,
+    { ...entry, id: 'paused', action: 'lead.cadence', category: 'cadence', title: 'Cadence paused', details: { mode: 'paused' } },
+    { ...entry, id: 'message', category: 'messages', title: 'SMS requested' },
+    ...(['calls', 'messages', 'appointments', 'cadence', 'employee'] as const).map((category) => ({ ...entry, id: `auto-${category}`, category, actor_type: 'automation' as const, actor_name: 'Automation' })),
+  ];
+  assert.deepEqual(teamActivity(entries).map((item) => item.id), ['created', 'paused', 'message']);
+  assert.deepEqual(teamActivity(entries, ' PAUSED ').map((item) => item.id), ['paused']);
+  assert.equal(teamActivity(entries, 'test staff').length, 3);
+  assert.deepEqual(teamActivity(entries, 'automation'), []);
+  assert.deepEqual(teamActivity([]), []);
+  assert.equal(entries.length, 8);
+});
 
 test('normalizes machine values without changing stored data', () => {
   for (const value of ['google_sheets', 'google-sheet', 'n8n_sheet', 'n8n_sheets', 'N8N Sheets']) assert.equal(sourceLabel(value), 'Google Sheets');

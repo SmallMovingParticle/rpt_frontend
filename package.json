@@ -7,22 +7,25 @@
   },
   "scripts": {
     "dev": "vinext dev",
+    "start:local": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/start-local.ps1",
     "build": "vinext build",
     "build:vercel": "next build",
     "start": "vinext start",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "typecheck": "tsc --noEmit",
     "test:display": "node --experimental-strip-types --test app/display.test.ts",
-    "test:cadence": "node --experimental-strip-types --test app/cadence.test.ts"
+    "test:cadence": "node --experimental-strip-types --test app/cadence.test.ts",
+    "test:auth": "node --experimental-strip-types --test app/session.test.ts",
+    "test:dashboard": "node --experimental-strip-types --test app/dashboard-client.test.ts"
   },
   "dependencies": {
-    "next": "16.3.3",
+    "next": "16.3.8",
     "react": "19.2.8",
     "react-dom": "19.2.8"
   },
   "devDependencies": {
-    "@cloudflare/vite-plugin": "1.54.1",
-    "@cloudflare/workers-types": "5.20260827.1",
+    "@cloudflare/vite-plugin": "1.62.5",
+    "@cloudflare/workers-types": "5.20261001.1",
     "@openai/sites-vite-plugin": "^0.1.0 || ^0.2.0",
     "@tailwindcss/postcss": "4.2.1",
     "@types/node": "22.19.19",
@@ -37,7 +40,7 @@
     "typescript": "5.9.3",
     "vinext": "1.0.0-beta.8",
     "vite": "8.2.2",
-    "wrangler": "4.127.0"
+    "wrangler": "4.147.0"
   },
   "type": "module"
 }

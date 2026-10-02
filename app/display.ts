@@ -1,3 +1,5 @@
+import type { ActivityEntry } from './dashboard-data';
+
 export const CLINIC_TZ = 'America/Los_Angeles';
 export const CLINIC_TZ_LABEL = 'PT';
 
@@ -49,6 +51,12 @@ export function statusTone(value: unknown): StatusTone {
 }
 
 export type ActivityKind = 'appointment' | 'link' | 'handoff' | 'call' | 'message' | 'created' | 'closed' | 'history';
+export function teamActivity(entries: ActivityEntry[], query = '') {
+  const search = query.trim().toLowerCase();
+  return entries.filter((entry) => entry.actor_type === 'employee' &&
+    `${entry.title} ${entry.actor_name} ${entry.action} ${Object.values(entry.details).join(' ')}`.toLowerCase().includes(search));
+}
+
 export function activityKind(item: Record<string, unknown>): ActivityKind {
   const value = `${item.to_status ?? ''} ${item.reason ?? ''} ${item.source ?? ''}`.toLowerCase().replaceAll('_', ' ').replaceAll('-', ' ');
   if (/booking link/.test(value)) return 'link';
