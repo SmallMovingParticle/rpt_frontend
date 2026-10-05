@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { FormEvent, ReactNode, useEffect, useId, useMemo, useRef, useState } from 'react';
-import { cadenceCallNames, cadenceRunScope, cadenceRunSummary, isCadenceStep, reorderCadenceSteps, splitCadenceRuns, type CadenceEvent } from './cadence';
+import { cadenceActionDescription, cadenceCallNames, cadenceStepName, cadenceRunSummary, isCadenceStep, reorderCadenceSteps, splitCadenceRuns, type CadenceEvent } from './cadence';
 import { ActivityEntry, CadenceStep, CadenceVersion, emptySnapshot, Lead, LeadCreateInput, LeadDetail, LeadStage, Snapshot, StaffMember } from './dashboard-data';
 import { AssistantDock, AssistantPage, ThemeToggle, setLeadDragData } from './assistant';
 import { ActivityKind, clientErrorMessage, clinicDateTimeValue, clinicWallTimeToIso, CLINIC_TZ, CLINIC_TZ_LABEL, displayEnum, operationalMessage, sourceLabel, statusTone, teamActivity, timezoneLabel } from './display';
@@ -23,7 +23,7 @@ type DashboardAction = (path: string, method: string, body?: unknown) => Promise
 
 function actionFailureCopy(path: string) {
   if (/\/sms$/.test(path)) return 'Message was not sent. Review the phone number before trying again.';
-  if (/cadence|outreach-events|message-overrides/.test(path)) return 'The outreach schedule could not be updated. Please try again.';
+  if (/cadence|outreach-events/.test(path)) return 'The outreach schedule could not be updated. Please try again.';
   if (/message-templates/.test(path)) return 'The message template could not be updated. Please try again.';
   if (/stage|contact-rules|review/.test(path)) return 'The lead status could not be updated. Please try again.';
   return 'The update could not be completed. Please try again.';
@@ -189,10 +189,6 @@ function toUsE164(raw: string): string | null {
   return local.length === 10 ? `+1${local}` : null;
 }
 
-function PencilIcon() {
-  return <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 20h4l10-10a2.8 2.8 0 0 0-4-4L4 16z" /><path d="M13.5 6.5l4 4" /></svg>;
-}
-
 function TrashIcon() {
   return (
     <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
@@ -318,7 +314,7 @@ export function DashboardShell({ user, staff }: { user: StaffUser; staff: StaffM
           },
         };
       });
-      setDetail({ lead, events: [], messages: [], calls: [], appointments: [], history: [], activity: [], message_overrides: [] });
+      setDetail({ lead, events: [], messages: [], calls: [], appointments: [], history: [], activity: [] });
       setAddingLead(false);
       showNotice(`${lead.full_name} was saved with ${lead.is_test ? 'the 1-minute test cadence' : 'the outreach cadence'}.${data.warning ? ` ${data.warning}` : ''}`);
       return true;
@@ -405,7 +401,7 @@ export function DashboardShell({ user, staff }: { user: StaffUser; staff: StaffM
       </div>
       {pathname !== '/assistant' && <AssistantDock leads={snapshot.leads} currentPath={pathname} currentLeadId={leadId} />}
       {notice && <div className={`toast ${notice.tone}`} role={notice.tone === 'error' ? 'alert' : 'status'}>{notice.tone === 'error' ? '!' : '✓'} {notice.message}</div>}
-      {addingLead && <AddLeadDialog staff={staff} defaultLocation={selectedLocation === 'All Locations' ? locations[0] : selectedLocation} onAdd={addLead} onClose={() => setAddingLead(false)} />}
+      {addingLead && <AddLeadDialog defaultLocation={selectedLocation === 'All Locations' ? locations[0] : selectedLocation} onAdd={addLead} onClose={() => setAddingLead(false)} />}
     </div>
   );
 }
@@ -427,12 +423,12 @@ function renderPage(path: string, view: string | null, query: string | null, sta
   if (path === '/administration') return <AdministrationPage snapshot={snapshot} />;
   if (path === '/administration/cadence') return <GlobalCadencePage snapshot={snapshot} action={action} loading={loading} />;
   if (path === '/administration/templates') return <TemplateStudio snapshot={snapshot} action={action} onPublished={onTemplatePublished} />;
-  if (/^\/leads\/[0-9a-f-]+\/conversations\/sms$/i.test(path)) return <LeadFrame detail={leadDetail!} tab="conversations" action={action} role={role} staff={staff}><SmsPage detail={leadDetail!} action={action} /></LeadFrame>;
-  if (/^\/leads\/[0-9a-f-]+\/conversations\/calls$/i.test(path)) return <LeadFrame detail={leadDetail!} tab="conversations" action={action} role={role} staff={staff}><CallsPage detail={leadDetail!} /></LeadFrame>;
-  if (/^\/leads\/[0-9a-f-]+\/cadence$/i.test(path)) return <LeadFrame detail={leadDetail!} tab="cadence" action={action} role={role} staff={staff}><LeadCadencePage detail={leadDetail!} action={action} templates={snapshot.templates} role={role} /></LeadFrame>;
-  if (/^\/leads\/[0-9a-f-]+\/appointments$/i.test(path)) return <LeadFrame detail={leadDetail!} tab="appointments" action={action} role={role} staff={staff}><LeadAppointmentsPage detail={leadDetail!} /></LeadFrame>;
-  if (/^\/leads\/[0-9a-f-]+\/(?:activity|history)$/i.test(path)) return <LeadFrame detail={leadDetail!} tab="activity" action={action} role={role} staff={staff}><LeadActivityPage detail={leadDetail!} /></LeadFrame>;
-  if (/^\/leads\/[0-9a-f-]+$/i.test(path)) return <LeadFrame detail={leadDetail!} tab="overview" action={action} role={role} staff={staff}><LeadOverview detail={leadDetail!} /></LeadFrame>;
+  if (/^\/leads\/[0-9a-f-]+\/conversations\/sms$/i.test(path)) return <LeadFrame detail={leadDetail!} tab="conversations" action={action} role={role}><SmsPage detail={leadDetail!} action={action} /></LeadFrame>;
+  if (/^\/leads\/[0-9a-f-]+\/conversations\/calls$/i.test(path)) return <LeadFrame detail={leadDetail!} tab="conversations" action={action} role={role}><CallsPage detail={leadDetail!} /></LeadFrame>;
+  if (/^\/leads\/[0-9a-f-]+\/cadence$/i.test(path)) return <LeadFrame detail={leadDetail!} tab="cadence" action={action} role={role}><LeadCadencePage detail={leadDetail!} action={action} /></LeadFrame>;
+  if (/^\/leads\/[0-9a-f-]+\/appointments$/i.test(path)) return <LeadFrame detail={leadDetail!} tab="appointments" action={action} role={role}><LeadAppointmentsPage detail={leadDetail!} /></LeadFrame>;
+  if (/^\/leads\/[0-9a-f-]+\/(?:activity|history)$/i.test(path)) return <LeadFrame detail={leadDetail!} tab="activity" action={action} role={role}><LeadActivityPage detail={leadDetail!} /></LeadFrame>;
+  if (/^\/leads\/[0-9a-f-]+$/i.test(path)) return <LeadFrame detail={leadDetail!} tab="overview" action={action} role={role}><LeadOverview detail={leadDetail!} /></LeadFrame>;
   return <Empty title="Page not found" body="Return to the lead pipeline to continue." />;
 }
 
@@ -486,8 +482,8 @@ function SkeletonLeadDetail({ path }: { path: string }) {
   // the page does not reflow when the record arrives.
   const route = path.endsWith('/cadence') ? 'cadence' : /\/(?:activity|history)$/.test(path) ? 'activity' : path.endsWith('/appointments') ? 'appointments' : path.includes('/conversations/calls') ? 'calls' : path.includes('/conversations/sms') ? 'sms' : 'overview';
   const panels: Record<string, { left: string; right: string; lower?: string }> = {
-    overview: { left: 'Lead information', right: 'Recent activity', lower: 'Next action' },
-    cadence: { left: 'Outreach schedule', right: 'Personalized outreach', lower: 'Contact rules' },
+    overview: { left: 'Lead information', right: 'Next action', lower: 'Notes' },
+    cadence: { left: 'Outreach schedule', right: 'Contact rules' },
     activity: { left: 'Activity history', right: 'Record controls' },
     appointments: { left: 'Appointment', right: 'Appointment preferences', lower: 'Booking history' },
     sms: { left: 'SMS conversation', right: 'Conversation context', lower: 'Safety' },
@@ -504,12 +500,11 @@ function SkeletonLeadDetail({ path }: { path: string }) {
     </section>
     <nav className="record-tabs">{['Overview','Conversations','Cadence','Appointments','Activity'].map((tab)=>
       <span key={tab}><Skeleton w={`${tab.length * 8 + 12}px`} /></span>)}</nav>
-    <div className={`two-col wide-left skeleton-lead-${route}`}>
+    <div className={`${route === 'overview' ? 'stack' : 'two-col wide-left'} skeleton-lead-${route}`}>
       <div className="stack">
         <Panel title={layout.left}><SkeletonRows rows={route === 'overview' ? 3 : 5} /></Panel>
-        {layout.lower && route === 'overview' && <Panel title={layout.lower}><SkeletonRows rows={1} /></Panel>}
       </div>
-      <div className="stack"><Panel title={layout.right}><SkeletonRows rows={3} /></Panel>{layout.lower && route !== 'overview' && <Panel title={layout.lower}><SkeletonRows rows={2} /></Panel>}</div>
+      <div className="stack"><Panel title={layout.right}><SkeletonRows rows={3} /></Panel>{layout.lower && <Panel title={layout.lower}><SkeletonRows rows={2} /></Panel>}</div>
     </div>
   </div>;
 }
@@ -633,21 +628,21 @@ function AnalyticsPage({ snapshot, loading }: { snapshot: Snapshot; loading: boo
 function AdministrationPage({ snapshot }: { snapshot: Snapshot }) {
   const cards = [
     ['/administration/cadence','CD','Global Cadence Studio','Edit the eight-step outreach sequence for future execution.'],
-    ['/administration/templates','SM','SMS Template Studio','Manage standard SMS copy and personalized patient messages.'],
+    ['/administration/templates','SM','SMS Template Studio','Manage reusable SMS templates and global cadence messages.'],
     ['/appointments','BK','Booking Configuration','Review appointment availability and booking safeguards.'],
     ['/review','RV','Review & Reconciliation','Resolve uncertain outreach results before trying again.'],
     ['/analytics','AU','Audit & Reporting','Monitor activity, delivery, and operational results.'],
   ];
-  return <><PageTitle title="Administration" subtitle="Organization-wide defaults are kept separate from personalized patient settings." /><div className="admin-grid">{cards.map(([href,icon,title,body]) => <Link className="admin-card" href={href} key={href}><b>{icon}</b><div><h2>{title}</h2><p>{body}</p></div><span>→</span></Link>)}</div><Alert>Configuration changes are authenticated and recorded in the audit log. DNC rules cannot be bypassed.</Alert><div className="metric-grid"><Stat label="Cadence steps" value={String(snapshot.cadence.length)} /><Stat label="SMS templates" value={String(snapshot.templates.length)} /><Stat label="Review queue" value={String(snapshot.system.review_queue ?? 0)} /><Stat label="Pending updates" value={String(snapshot.system.provider_queue ?? 0)} /></div></>;
+  return <><PageTitle title="Administration" subtitle="Manage organization-wide outreach settings." /><div className="admin-grid">{cards.map(([href,icon,title,body]) => <Link className="admin-card" href={href} key={href}><b>{icon}</b><div><h2>{title}</h2><p>{body}</p></div><span>→</span></Link>)}</div><Alert>Configuration changes are authenticated and recorded in the audit log. DNC rules cannot be bypassed.</Alert><div className="metric-grid"><Stat label="Cadence steps" value={String(snapshot.cadence.length)} /><Stat label="SMS templates" value={String(snapshot.templates.length)} /><Stat label="Review queue" value={String(snapshot.system.review_queue ?? 0)} /><Stat label="Pending updates" value={String(snapshot.system.provider_queue ?? 0)} /></div></>;
 }
 
 function GlobalCadencePage({ snapshot, action, loading }: { snapshot: Snapshot; action: DashboardAction; loading: boolean }) {
-  return <><PageTitle title="Global Cadence Studio" subtitle="Build, compare, and activate audited outreach versions." /><Alert>New leads start on the active version. Leads already in outreach stay on the version they started, and personalized patient plans remain unchanged.</Alert>
+  return <><PageTitle title="Global Cadence Studio" subtitle="Build, compare, and activate audited outreach versions." /><Alert>New leads start on the active version. Leads already in outreach stay on the version they started.</Alert>
     <CadenceStudio action={action} templates={snapshot.templates} loading={loading && !snapshot.cadence.length} />
   </>;
 }
 
-function CadenceStudio({ action, templates, leadId, loading = false, canPermanentlyDelete = true }: { action: DashboardAction; templates: Array<Record<string, unknown>>; leadId?: string; loading?: boolean; canPermanentlyDelete?: boolean }) {
+function CadenceStudio({ action, templates, loading = false }: { action: DashboardAction; templates: Array<Record<string, unknown>>; loading?: boolean }) {
   const [versions, setVersions] = useState<CadenceVersion[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [fetching, setFetching] = useState(true);
@@ -658,52 +653,43 @@ function CadenceStudio({ action, templates, leadId, loading = false, canPermanen
   const [updatingStep, setUpdatingStep] = useState<number | null>(null);
   const [renaming, setRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState('');
-  const [switchingMode, setSwitchingMode] = useState(false);
-  const [personalizedMode, setPersonalizedMode] = useState(false);
-  const [editorOpen, setEditorOpen] = useState(false);
   const [refresh, setRefresh] = useState(0);
   const [error, setError] = useState('');
 
   useEffect(() => {
     const controller = new AbortController();
-    const query = leadId ? `?lead_id=${encodeURIComponent(leadId)}` : '';
-    dashboardFetch(`/api/dashboard/cadence-versions${query}`, { signal: controller.signal })
+    dashboardFetch('/api/dashboard/cadence-versions', { signal: controller.signal })
       .then((response) => response.ok ? response.json() as Promise<{ versions: CadenceVersion[] }> : Promise.reject())
       .then((data) => {
         setVersions(data.versions);
-        const scoped = data.versions.filter((version) => (leadId ? version.scope === 'lead' && version.status !== 'deleted' : version.scope === 'global'));
+        const scoped = data.versions;
         const preferred = scoped.filter((version) => version.status !== 'deleted');
         setSelectedId((current) => scoped.some((version) => version.id === current)
           ? current
           : (preferred.find((version) => version.status === 'draft') ?? preferred.find((version) => version.status === 'active') ?? preferred[0])?.id ?? null);
-        if (leadId) setPersonalizedMode(data.versions.some((version) => version.scope === 'lead' && version.status === 'active'));
         setError('');
       })
       .catch((cause) => { if (cause?.name !== 'AbortError') setError('Cadence versions could not be loaded.'); })
       .finally(() => setFetching(false));
     return () => controller.abort();
-  }, [leadId, refresh]);
+  }, [refresh]);
 
-  const scoped = versions.filter((version) => version.status !== 'deleted' && (leadId ? version.scope === 'lead' : version.scope === 'global'));
-  const deleted = versions.filter((version) => version.status === 'deleted' && version.scope === 'global');
-  const selectable = leadId ? scoped : [...scoped, ...deleted];
+  const scoped = versions.filter((version) => version.status !== 'deleted');
+  const deleted = versions.filter((version) => version.status === 'deleted');
+  const selectable = [...scoped, ...deleted];
   const selected = selectable.find((version) => version.id === selectedId) ?? scoped[0];
-  const activePersonalized = leadId ? scoped.find((version) => version.status === 'active') : undefined;
-  const standard = versions.find((version) => version.status === 'active' && version.scope === 'global');
   const source = selected ?? versions.find((version) => version.status === 'active' && version.scope === 'global');
 
-  async function cloneVersion(sourceVersion: CadenceVersion | undefined = source, openEditor = true) {
+  async function cloneVersion(sourceVersion: CadenceVersion | undefined = source) {
     if (!sourceVersion || creating) return;
     setCreating(true);
     try {
       const created = await action('cadence-versions', 'POST', {
         source_version_id: sourceVersion.id,
-        lead_id: leadId ?? null,
       }) as unknown as CadenceVersion | null;
       if (created?.id) {
         setVersions((current) => [...current, created]);
         setSelectedId(created.id);
-        if (leadId && openEditor) setEditorOpen(true);
       }
     } finally {
       setCreating(false);
@@ -722,34 +708,6 @@ function CadenceStudio({ action, templates, leadId, loading = false, canPermanen
     } finally {
       setRenaming(false);
     }
-  }
-
-  async function chooseStandard() {
-    if (!leadId || switchingMode) return;
-    if (!activePersonalized) {
-      setPersonalizedMode(false);
-      setEditorOpen(false);
-      return;
-    }
-    if (!window.confirm('Switch this patient to the standard outreach plan? Only future planned steps will be replaced.')) return;
-    setSwitchingMode(true);
-    try {
-      if (await action(`leads/${leadId}/cadence-mode`, 'POST', { mode: 'standard' })) {
-        setPersonalizedMode(false);
-        setEditorOpen(false);
-        setRefresh((value) => value + 1);
-      }
-    } finally {
-      setSwitchingMode(false);
-    }
-  }
-
-  async function choosePersonalized() {
-    if (!leadId || switchingMode) return;
-    setPersonalizedMode(true);
-    const preferred = scoped.find((version) => version.status === 'draft') ?? activePersonalized ?? scoped[0];
-    if (preferred) setSelectedId(preferred.id);
-    else await cloneVersion(standard, false);
   }
 
   async function deleteVersion() {
@@ -811,17 +769,8 @@ function CadenceStudio({ action, templates, leadId, loading = false, canPermanen
     }
   }
 
-  if (loading || fetching) return <Panel title={leadId ? 'Personalized outreach plan' : 'Loading cadence versions'}><SkeletonRows rows={5} /></Panel>;
+  if (loading || fetching) return <Panel title="Loading cadence versions"><SkeletonRows rows={5} /></Panel>;
   if (error) return <Panel title="Cadence unavailable"><Alert tone="warning">{error}</Alert><button className="secondary" type="button" onClick={() => { setFetching(true); setRefresh((value) => value + 1); }}>Retry connection</button></Panel>;
-
-  if (leadId) return <>
-    <div className="plan-mode-card"><div><strong>Outreach plan</strong><p>{personalizedMode ? 'A personalized sequence is selected for this patient.' : `Currently using ${standard?.name ?? 'the standard outreach plan'}.`}</p></div><div className="plan-mode-switch" role="group" aria-label="Choose outreach plan"><button type="button" className={!personalizedMode ? 'selected' : ''} aria-pressed={!personalizedMode} disabled={switchingMode} onClick={chooseStandard}>Standard outreach</button><button type="button" className={personalizedMode ? 'selected' : ''} aria-pressed={personalizedMode} disabled={switchingMode || creating || !standard} onClick={choosePersonalized}>Personalized outreach</button></div></div>
-    {personalizedMode && <div className="personal-plan-summary">
-      {scoped.length > 1 && <div className="field-label"><span>Saved plans</span><SelectMenu ariaLabel="Choose a saved personalized plan" value={String(selected?.id ?? '')} onChange={(value) => setSelectedId(Number(value))} options={scoped.map((version) => ({ value: String(version.id), label: `${version.name} · ${cadenceStatusLabel(version.status)}` }))} /></div>}
-      {selected ? <div className="plan-summary-row"><div><strong>{selected.name}</strong><small>{cadenceStatusLabel(selected.status)} · {selected.steps.length} steps</small></div><button className="secondary" type="button" disabled={creating} onClick={selected.status === 'draft' ? () => setEditorOpen(true) : () => cloneVersion(selected)}>{creating ? 'Preparing…' : selected.status === 'draft' ? 'Continue setup' : 'Edit as new plan'}</button></div> : <div className="plan-summary-row"><div><strong>{creating ? 'Preparing a personalized plan…' : 'No personalized plan yet'}</strong><small>The standard sequence will be copied before you edit it.</small></div><button className="secondary" type="button" disabled={creating || !standard} onClick={() => cloneVersion(standard)}>{creating ? 'Preparing…' : 'Create plan'}</button></div>}
-    </div>}
-    {editorOpen && selected?.status === 'draft' && <ModalShell className="plan-editor-modal" labelId="personal-plan-title" onClose={() => setEditorOpen(false)}><header><div><h2 id="personal-plan-title">Personalized outreach plan</h2><p>Select one step at a time. Changes apply only to this patient.</p></div><button className="close-button" type="button" onClick={() => setEditorOpen(false)} aria-label="Close personalized plan editor">×</button></header><div className="plan-editor-body"><CadenceEditor key={`${selected.id}-${selected.name}`} version={selected} templates={templates} action={action} local onChanged={(activated) => { setEditorOpen(false); setPersonalizedMode(activated); setRefresh((value) => value + 1); }} /></div></ModalShell>}
-  </>;
 
   if (!selected) return <Panel><Empty title="No cadence configured" body="Create and seed an active global cadence before adding versions." /></Panel>;
 
@@ -832,9 +781,9 @@ function CadenceStudio({ action, templates, leadId, loading = false, canPermanen
     </div>
     <div className="version-toolbar"><div>{renameValue ? <label className="version-name-editor"><span className="sr-only">Version name</span><input autoFocus value={renameValue} maxLength={120} onChange={(event) => setRenameValue(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') saveName(); if (event.key === 'Escape') setRenameValue(''); }} /></label> : <strong>{selected.name}</strong>}<small>{selected.status === 'deleted' ? 'This complete version is retained and can be reused as a new draft.' : 'Use the Status column to enable or disable steps. Create a draft for timing, channel, or wording changes.'}</small></div><div className="version-toolbar-actions">{renameValue ? <><button className="secondary" type="button" disabled={renaming || !renameValue.trim()} onClick={saveName}>{renaming ? 'Saving…' : 'Save name'}</button><button className="secondary" type="button" onClick={() => setRenameValue('')}>Cancel</button></> : <button className="secondary" type="button" onClick={() => setRenameValue(selected.name)}>Rename</button>}{selected.status === 'deleted' ? <button className="primary" type="button" disabled={creating} onClick={() => cloneVersion(selected)}>{creating ? 'Creating…' : 'Reuse as new draft'}</button> : <button className="danger-button" type="button" disabled={selected.status === 'active' || deleting} onClick={deleteVersion}>{deleting ? 'Deleting…' : 'Delete version'}</button>}</div></div>
     {selected.status === 'draft'
-      ? <CadenceEditor key={`${selected.id}-${selected.name}`} version={selected} templates={templates} action={action} local={false} onChanged={() => setRefresh((value) => value + 1)} />
+      ? <CadenceEditor key={`${selected.id}-${selected.name}`} version={selected} templates={templates} action={action} onChanged={() => setRefresh((value) => value + 1)} />
       : <div className="two-col wide-left"><Panel title={selected.name}><CadenceStepsTable steps={selected.steps} onToggle={selected.status === 'deleted' ? undefined : togglePublishedStep} updatingStep={updatingStep} /></Panel><div className="stack"><Panel title="Version details"><dl className="detail-list"><div><dt>Status</dt><dd><StatusText status={cadenceStatusLabel(selected.status)} /></dd></div><div><dt>Version</dt><dd>v{selected.version_number}</dd></div><div><dt>Scope</dt><dd>Global default</dd></div><div><dt>Steps</dt><dd>{selected.steps.length}</dd></div></dl><div className="version-detail-actions">{selected.status === 'archived' && <button className="primary full" type="button" disabled={activating} onClick={activatePreviousVersion}>{activating ? 'Activating…' : 'Activate this version'}</button>}<button className={selected.status === 'archived' ? 'secondary full' : 'primary full'} type="button" disabled={creating || activating} onClick={() => cloneVersion(selected)}>{creating ? 'Creating…' : selected.status === 'deleted' ? 'Reuse as new draft' : 'Create editable draft'}</button></div><p className="control-note">Status changes apply when this version starts or restarts. Current lead schedules stay unchanged. Create a draft for every other edit.</p></Panel><Panel title="Guardrails"><ul className="check-list"><li>✓ DNC enforced</li><li>✓ Call opt-out enforced</li><li>✓ Business-hour windows</li><li>✓ Audited changes</li></ul></Panel></div></div>}
-  </section><aside className="deleted-versions"><header><div><h2>Deleted versions</h2><p>{canPermanentlyDelete ? 'Review, reuse, or permanently remove' : 'Review or reuse archived plans'}</p></div><span>{deleted.length}</span></header>{deleted.length ? <div className="deleted-version-list">{deleted.map((version) => <article className={version.id === selected.id ? 'selected' : ''} key={version.id}><button type="button" className="deleted-version-select" aria-pressed={version.id === selected.id} onClick={() => { setSelectedId(version.id); setRenameValue(''); }}><strong>{version.name}</strong><small>Deleted {version.deleted_at ? date(version.deleted_at) : 'recently'}</small><span>v{version.version_number} · {version.steps.length} steps</span></button>{canPermanentlyDelete && <button className="permanent-delete" type="button" disabled={hardDeleting !== null} onClick={() => permanentlyDeleteVersion(version)} aria-label={`Permanently delete ${version.name}`}>{hardDeleting === version.id ? 'Deleting…' : 'Permanently delete'}</button>}</article>)}</div> : <p className="deleted-empty">Deleted cadence versions will appear here.</p>}</aside></div>;
+  </section><aside className="deleted-versions"><header><div><h2>Deleted versions</h2><p>Review, reuse, or permanently remove</p></div><span>{deleted.length}</span></header>{deleted.length ? <div className="deleted-version-list">{deleted.map((version) => <article className={version.id === selected.id ? 'selected' : ''} key={version.id}><button type="button" className="deleted-version-select" aria-pressed={version.id === selected.id} onClick={() => { setSelectedId(version.id); setRenameValue(''); }}><strong>{version.name}</strong><small>Deleted {version.deleted_at ? date(version.deleted_at) : 'recently'}</small><span>v{version.version_number} · {version.steps.length} steps</span></button>{<button className="permanent-delete" type="button" disabled={hardDeleting !== null} onClick={() => permanentlyDeleteVersion(version)} aria-label={`Permanently delete ${version.name}`}>{hardDeleting === version.id ? 'Deleting…' : 'Permanently delete'}</button>}</article>)}</div> : <p className="deleted-empty">Deleted cadence versions will appear here.</p>}</aside></div>;
 }
 
 function cadenceStatusLabel(status: CadenceVersion['status']) {
@@ -842,39 +791,39 @@ function cadenceStatusLabel(status: CadenceVersion['status']) {
 }
 
 function CadenceStepsTable({ steps, onToggle, updatingStep }: { steps: CadenceStep[]; onToggle?: (step: CadenceStep, enabled: boolean) => Promise<void>; updatingStep?: number | null }) {
-  return <DataTable heads={['Step','Day','Action','Channel','Status']}>{steps.map((step,index)=><tr key={step.id ?? index}><td><span className="step-number">{index+1}</span></td><td>Day {step.day_offset}</td><td><strong>{step.description}</strong>{step.channel === 'sms' && <small className="step-copy">{step.sms_body}</small>}</td><td>{step.channel === 'call' ? 'Phone call' : 'Text message'}</td><td>{onToggle ? <label className="cadence-status-toggle"><input type="checkbox" checked={step.is_active} disabled={updatingStep !== null} onChange={(event) => void onToggle(step, event.target.checked)} /><span>{updatingStep === step.id ? 'Saving…' : step.is_active ? 'Active' : 'Disabled'}</span></label> : <StatusText status={step.is_active ? 'Active' : 'Disabled'} />}</td></tr>)}</DataTable>;
+  return <DataTable heads={['Step','Day','Action','Channel','Status']}>{steps.map((step,index)=><tr key={step.id ?? index}><td><span className="step-number">{index+1}</span></td><td>Day {step.day_offset}</td><td><strong>{cadenceStepName(step)}</strong>{step.channel === 'sms' && <small className="step-copy">{step.sms_body}</small>}</td><td>{step.channel === 'call' ? 'Phone call' : 'Text message'}</td><td>{onToggle ? <label className="cadence-status-toggle"><input type="checkbox" checked={step.is_active} disabled={updatingStep !== null} onChange={(event) => void onToggle(step, event.target.checked)} /><span>{updatingStep === step.id ? 'Saving…' : step.is_active ? 'Active' : 'Disabled'}</span></label> : <StatusText status={step.is_active ? 'Active' : 'Disabled'} />}</td></tr>)}</DataTable>;
 }
 
-function CadenceEditor({ version, templates, action, local, onChanged }: { version: CadenceVersion; templates: Array<Record<string, unknown>>; action: DashboardAction; local: boolean; onChanged: (activated: boolean) => void }) {
+function CadenceEditor({ version, templates, action, onChanged }: { version: CadenceVersion; templates: Array<Record<string, unknown>>; action: DashboardAction; onChanged: (activated: boolean) => void }) {
   const [name, setName] = useState(version.name);
-  const [steps, setSteps] = useState<CadenceStep[]>(version.steps);
+  const [steps, setSteps] = useState<CadenceStep[]>(() => version.steps.map((step) => ({ ...step, description: cadenceStepName(step) })));
   const [selectedStep, setSelectedStep] = useState(0);
   const [draggingStep, setDraggingStep] = useState<number | null>(null);
   const [dropTarget, setDropTarget] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
   const step = steps[selectedStep];
   const savedTemplates = templates.filter((template) => Boolean(template.deletable) && Boolean(template.is_active) && String(template.body ?? '').trim());
-  const valid = Boolean(name.trim()) && steps.some((step) => step.is_active) && steps.every((step) => step.description.trim() && (step.channel !== 'sms' || step.sms_body?.trim()));
-  function update(index: number, change: Partial<CadenceStep>) { setSteps((current) => current.map((step,position) => position === index ? { ...step, ...change } : step)); }
+  const valid = Boolean(name.trim()) && steps.some((step) => step.is_active) && steps.every((step) => cadenceActionDescription(step.description) && step.description.length <= 300 && (step.channel !== 'sms' || step.sms_body?.trim()));
+  function update(index: number, change: Partial<CadenceStep>) { setSteps((current) => current.map((step,position) => position === index ? { ...step, ...change, description: cadenceStepName({ ...step, ...change }) } : step)); }
   function reorder(from: number, to: number) {
     if (from === to || to < 0 || to >= steps.length) return;
     setSteps((current) => reorderCadenceSteps(current, from, to));
     setSelectedStep(to);
   }
   function move(index: number, offset: number) { reorder(index, index + offset); }
-  function addStep() { setSteps((current) => [...current, { step_order: current.length, day_offset: current.at(-1)?.day_offset ?? 0, channel: 'call', description: 'New outreach action', is_active: true, sms_body: null }]); setSelectedStep(steps.length); }
+  function addStep() { setSteps((current) => [...current, { step_order: current.length, day_offset: current.at(-1)?.day_offset ?? 0, channel: 'call', description: cadenceStepName({ day_offset: current.at(-1)?.day_offset ?? 0, description: 'Scheduling call' }), is_active: true, sms_body: null }]); setSelectedStep(steps.length); }
   function deleteStep() { if (steps.length === 1) return; setSteps((current) => current.filter((_, position) => position !== selectedStep)); setSelectedStep((current) => Math.max(0, Math.min(current, steps.length - 2))); }
   async function save(activate: boolean) {
     if (!valid || saving) return;
-    if (activate && !window.confirm(local ? 'Use this personalized plan for this patient and replace only their future planned steps?' : 'Activate this version?\n\nNew leads will start on it. Leads already in outreach stay on the version they started with.')) return;
+    if (activate && !window.confirm('Activate this version?\n\nNew leads will start on it. Leads already in outreach stay on the version they started with.')) return;
     setSaving(true);
     try {
-      const saved = await action(`cadence-versions/${version.id}`, 'PUT', { name: name.trim(), steps: steps.map((step) => ({ day_offset: step.day_offset, channel: step.channel, description: step.description.trim(), is_active: step.is_active, sms_body: step.channel === 'sms' ? step.sms_body : null })) });
+      const saved = await action(`cadence-versions/${version.id}`, 'PUT', { name: name.trim(), steps: steps.map((step) => ({ day_offset: step.day_offset, channel: step.channel, description: cadenceStepName(step), is_active: step.is_active, sms_body: step.channel === 'sms' ? step.sms_body : null })) });
       if (saved && (!activate || await action(`cadence-versions/${version.id}/activate`, 'POST'))) onChanged(activate);
     } finally { setSaving(false); }
   }
-  return <Panel title={local ? 'Personalized plan editor' : 'Draft cadence editor'}><div className="cadence-editor">
-    <label className="field-label">{local ? 'Plan name' : 'Version name'}<input value={name} maxLength={120} onChange={(event) => setName(event.target.value)} /></label>
+  return <Panel title="Draft cadence editor"><div className="cadence-editor">
+    <label className="field-label">Version name<input value={name} maxLength={120} onChange={(event) => setName(event.target.value)} /></label>
     <div className="plan-builder"><aside className="plan-step-nav"><header><div><strong>Plan steps</strong><small>Drag to reorder or select a step to edit</small></div><span>{steps.length}</span></header><div>{steps.map((item,index)=><button
       type="button"
       draggable
@@ -890,10 +839,10 @@ function CadenceEditor({ version, templates, action, local, onChanged }: { versi
       key={item.id ?? index}
     ><span className="plan-step-number">{index+1}</span><div><strong>{item.description || `Step ${index+1}`}</strong><small>Day {item.day_offset} · {item.channel==='call'?'Phone call':'Text message'}{item.is_active?'':' · Disabled'}</small></div><span className="plan-drag-handle"><GripIcon /></span></button>)}</div><button className="secondary full" type="button" onClick={addStep}>+ Add step</button></aside>
       {step && <fieldset className="plan-step-detail"><legend className="sr-only">Edit step {selectedStep+1}</legend><header><div><span>Step {selectedStep+1}</span><h3>{step.description || 'Untitled step'}</h3></div><label className="enabled-check"><input type="checkbox" checked={step.is_active} onChange={(event)=>update(selectedStep,{is_active:event.target.checked})} />Enabled</label></header>
-        <div className="step-fields"><label>Day<input type="number" min="0" max="365" value={step.day_offset} onChange={(event)=>update(selectedStep,{day_offset:Number(event.target.value)})} /></label><div className="step-select-field"><span>Channel</span><SelectMenu ariaLabel={`Channel for step ${selectedStep + 1}`} value={step.channel} onChange={(value)=>update(selectedStep,{channel:value as 'call'|'sms',sms_body:value==='sms'?(step.sms_body??''):null})} options={[{ value: 'call', label: 'Phone call' }, { value: 'sms', label: 'Text message' }]} /></div><label className="step-action">Step description<input value={step.description} maxLength={300} onChange={(event)=>update(selectedStep,{description:event.target.value})} /></label>
+        <div className="step-fields"><label>Day<input type="number" min="0" max="365" value={step.day_offset} onChange={(event)=>update(selectedStep,{day_offset:Number(event.target.value)})} /></label><div className="step-select-field"><span>Channel</span><SelectMenu ariaLabel={`Channel for step ${selectedStep + 1}`} value={step.channel} onChange={(value)=>update(selectedStep,{channel:value as 'call'|'sms',sms_body:value==='sms'?(step.sms_body??''):null})} options={[{ value: 'call', label: 'Phone call' }, { value: 'sms', label: 'Text message' }]} /></div><label className="step-action">Action description<input value={cadenceActionDescription(step.description)} maxLength={290} onChange={(event)=>update(selectedStep,{description:event.target.value})} /></label>
           {step.channel==='sms'&&<div className="step-message"><div className="step-message-toolbar"><label htmlFor={`step-message-${version.id}-${selectedStep}`}>Text message</label>{savedTemplates.length ? <SelectMenu className="template-import" ariaLabel={`Import a saved template into step ${selectedStep + 1}`} value="" onChange={(value)=>{const template=savedTemplates.find((item)=>String(item.id)===value);if(template)update(selectedStep,{sms_body:String(template.body)});}} options={[{value:'',label:'Import saved template'},...savedTemplates.map((template)=>({value:String(template.id),label:smsTemplateName(template)}))]} /> : <small>No saved templates available</small>}</div><textarea id={`step-message-${version.id}-${selectedStep}`} value={step.sms_body??''} maxLength={1600} onChange={(event)=>update(selectedStep,{sms_body:event.target.value})} /></div>}
         </div><footer><div className="step-reorder"><button type="button" className="icon-button" disabled={selectedStep===0} onClick={()=>move(selectedStep,-1)}><ArrowIcon direction="up" />Move earlier</button><button type="button" className="icon-button" disabled={selectedStep===steps.length-1} onClick={()=>move(selectedStep,1)}><ArrowIcon direction="down" />Move later</button></div><button type="button" className="icon-button danger" disabled={steps.length===1} onClick={deleteStep}>Delete step</button></footer></fieldset>}
-    </div><div className="editor-actions"><button className="secondary" type="button" disabled={!valid||saving} onClick={()=>save(false)}>{saving?'Saving…':local?'Save for later':'Save draft'}</button><button className="primary" type="button" disabled={!valid||saving} onClick={()=>save(true)}>{saving?'Saving…':local?'Save and use plan':'Activate version'}</button></div>
+    </div><div className="editor-actions"><button className="secondary" type="button" disabled={!valid||saving} onClick={()=>save(false)}>{saving?'Saving…':'Save draft'}</button><button className="primary" type="button" disabled={!valid||saving} onClick={()=>save(true)}>{saving?'Saving…':'Activate version'}</button></div>
   </div></Panel>;
 }
 
@@ -970,7 +919,7 @@ function NewTemplateDialog({ onClose, onCreate }: { onClose: () => void; onCreat
   return <ModalShell className="template-dialog" labelId="new-template-title" onClose={onClose}><header><div><h2 id="new-template-title">Add SMS template</h2><p>Create reusable message copy for the outreach team.</p></div><button className="close-button" type="button" onClick={onClose} aria-label="Close template dialog">×</button></header><form onSubmit={submit}><label className="field-label">Template name<input autoFocus value={name} maxLength={120} onChange={(event) => setName(event.target.value)} /></label><label className="field-label">Message body<textarea value={body} maxLength={1600} onChange={(event) => setBody(event.target.value)} /></label><footer><button className="secondary" type="button" onClick={onClose}>Cancel</button><button className="primary" type="submit" disabled={saving || !name.trim() || !body.trim()}>{saving ? 'Adding…' : 'Add template'}</button></footer></form></ModalShell>;
 }
 
-function LeadFrame({ detail, tab, action, role, staff, children }: { detail: LeadDetail; tab: string; action: DashboardAction; role: StaffUser['role']; staff: StaffMember[]; children: ReactNode }) {
+function LeadFrame({ detail, tab, action, role, children }: { detail: LeadDetail; tab: string; action: DashboardAction; role: StaffUser['role']; children: ReactNode }) {
   const lead = detail.lead;
   const id = String(lead.id);
   const stage = String(lead.stage ?? 'cadence') as LeadStage;
@@ -982,7 +931,6 @@ function LeadFrame({ detail, tab, action, role, staff, children }: { detail: Lea
   const progress = currentSummary.attempted;
   const total = currentSummary.expectedSteps ?? currentRun.filter(isCadenceStep).length;
   const [busy,setBusy] = useState(false);
-  const [editing,setEditing] = useState(false);
   const cadencePaused = lead.cadence_state === 'paused';
   const cadenceOver = stage === 'closed' || stage === 'booked';
   async function toggleCadence(){ setBusy(true); try { await action(`leads/${id}/cadence`,'POST',{action: cadencePaused ? 'resume':'pause'}); } finally {setBusy(false);} }
@@ -998,7 +946,7 @@ This removes the lead and everything attached to it - cadence schedule, calls, t
     if (await action(`leads/${id}`,'DELETE')) router.push('/leads');
     else setDeleting(false);
   }
-  return <><div className="breadcrumbs"><Link href="/leads">Lead Pipeline</Link><span>/</span><span>{String(lead.display_id)}</span><span>/</span><strong>{lead.full_name}</strong></div><section className="lead-header"><div className="lead-avatar">{initials(lead.full_name)}</div><div className="lead-identity"><h1>{lead.full_name}</h1><span><PhoneIcon />{phone}</span></div><StatusBadge stage={stage} paused={cadencePaused} />{total > 0 && !cadenceOver && <span className="version">{String(lead.cadence_version_name ?? detail.cadence_version?.name ?? 'Cadence')} · {progress} of {total}</span>}<span className="location"><MapPinIcon />{String(lead.location ?? 'Not assigned')}</span><div className="record-actions"><button className="secondary icon-label" type="button" onClick={() => setEditing(true)} title="Edit lead details"><PencilIcon />Edit</button>{!cadenceOver && <button className="secondary icon-label" type="button" disabled={busy} onClick={toggleCadence} title={cadencePaused ? 'Resume cadence' : 'Pause cadence'}>{cadencePaused ? <PlayIcon /> : <PauseIcon />}{cadencePaused ? 'Resume cadence':'Pause cadence'}</button>}<Link className="primary icon-label" href={`/leads/${id}/conversations/sms`}><EnvelopeIcon />Send SMS</Link>{role === 'super_admin' && <button className="danger-button icon-label" type="button" disabled={busy || deleting} onClick={removeLead} title="Delete lead" aria-label="Delete lead"><TrashIcon />{deleting ? 'Deleting…' : 'Delete lead'}</button>}</div></section><nav className="record-tabs">{[['overview','Overview',`/leads/${id}`],['conversations','Conversations',`/leads/${id}/conversations/sms`],['cadence','Cadence',`/leads/${id}/cadence`],['appointments','Appointments',`/leads/${id}/appointments`],['activity','Activity',`/leads/${id}/activity`]].map(([key,label,href])=><Link className={tab===key?'active':''} aria-current={tab === key ? 'page' : undefined} href={href} key={key}>{label}</Link>)}</nav>{stage === 'attention' && Boolean(lead.review_reason) && <Alert tone="warning"><strong>Needs attention:</strong> {operationalMessage(lead.review_reason)}</Alert>}{editing && <EditLeadDialog detail={detail} action={action} staff={staff} onClose={() => setEditing(false)} />}{children}</>;
+  return <><div className="breadcrumbs"><Link href="/leads">Lead Pipeline</Link><span>/</span><span>{String(lead.display_id)}</span><span>/</span><strong>{lead.full_name}</strong></div><section className="lead-header"><div className="lead-avatar">{initials(lead.full_name)}</div><div className="lead-identity"><h1>{lead.full_name}</h1><span><PhoneIcon />{phone}</span></div><StatusBadge stage={stage} paused={cadencePaused} />{total > 0 && !cadenceOver && <span className="version">{String(lead.cadence_version_name ?? detail.cadence_version?.name ?? 'Cadence')} · {progress} of {total}</span>}<span className="location"><MapPinIcon />{String(lead.location ?? 'Not assigned')}</span><div className="record-actions">{!cadenceOver && <button className="secondary icon-label" type="button" disabled={busy} onClick={toggleCadence} title={cadencePaused ? 'Resume cadence' : 'Pause cadence'}>{cadencePaused ? <PlayIcon /> : <PauseIcon />}{cadencePaused ? 'Resume cadence':'Pause cadence'}</button>}<Link className="primary icon-label" href={`/leads/${id}/conversations/sms`}><EnvelopeIcon />Send SMS</Link>{role === 'super_admin' && <button className="danger-button icon-label" type="button" disabled={busy || deleting} onClick={removeLead} title="Delete lead" aria-label="Delete lead"><TrashIcon />{deleting ? 'Deleting…' : 'Delete lead'}</button>}</div></section><nav className="record-tabs">{[['overview','Overview',`/leads/${id}`],['conversations','Conversations',`/leads/${id}/conversations/sms`],['cadence','Cadence',`/leads/${id}/cadence`],['appointments','Appointments',`/leads/${id}/appointments`],['activity','Activity',`/leads/${id}/activity`]].map(([key,label,href])=><Link className={tab===key?'active':''} aria-current={tab === key ? 'page' : undefined} href={href} key={key}>{label}</Link>)}</nav>{stage === 'attention' && Boolean(lead.review_reason) && <Alert tone="warning"><strong>Needs attention:</strong> {operationalMessage(lead.review_reason)}</Alert>}{children}</>;
 }
 
 function LeadOverview({ detail }: { detail: LeadDetail }) {
@@ -1009,7 +957,7 @@ function LeadOverview({ detail }: { detail: LeadDetail }) {
   const pendingResult = !cadenceOver && detail.events.some((event) => event.status === 'attempted' || event.status === 'in_flight');
   const nextAction = String(lead.next_step ?? (pendingResult ? 'Awaiting outreach result' : detail.events.length ? 'Cadence complete' : 'No cadence scheduled'));
   const nextCopy = cadenceOver ? 'Automated outreach has ended for this lead.' : pendingResult ? 'An outreach step is waiting for confirmation.' : lead.next_event_id ? 'Continue the scheduled outreach cadence.' : 'No planned outreach event remains.';
-  return <div className="two-col wide-left"><div className="stack"><Panel title="Lead information"><dl className="info-grid"><div><dt>Lead ID</dt><dd>{String(lead.display_id)}</dd></div><div><dt>Source</dt><dd>{sourceLabel(lead.source ?? lead.source_system)}</dd></div><div><dt>Owner</dt><dd>{String(lead.owner ?? 'Unassigned')}</dd></div><div><dt>Created</dt><dd>{date(String(lead.created_at ?? ''))}</dd></div>{Boolean(lead.date_of_birth) && <div><dt>Date of birth</dt><dd>{String(lead.date_of_birth)}</dd></div>}{Boolean(lead.referred_by) && <div><dt>Referred by</dt><dd>{String(lead.referred_by)}</dd></div>}{Boolean(lead.lead_type) && <div><dt>Lead type</dt><dd>{String(lead.lead_type)}</dd></div>}<div><dt>Preferred location</dt><dd>{String(lead.location ?? 'Not assigned')}</dd></div><div><dt>Time zone</dt><dd>{timezoneLabel(lead.timezone)}</dd></div></dl></Panel><Panel title={cadenceOver ? "Outcome" : "Next action"}><div className="next-action"><span className="status-icon"><PhoneIcon size={20} /></span><div><strong>{nextAction}</strong><p>{nextCopy}</p></div><Link className="secondary" href={`/leads/${lead.id}/cadence`}>View schedule</Link></div></Panel><Panel title="Notes">{stage === 'attention' && Boolean(lead.review_reason) ? <p><strong>Why this lead needs attention:</strong> {operationalMessage(lead.review_reason)}</p> : <p className="muted">No additional lead notes have been recorded.</p>}</Panel></div><Panel title="Recent activity"><ActivityTimeline entries={(detail.activity ?? []).slice(0, 5)} compact /><Link className="text-action footer-link" href={`/leads/${lead.id}/activity`}>View all activity →</Link></Panel></div>;
+  return <div className="stack"><Panel title="Lead information"><dl className="info-grid"><div><dt>Lead ID</dt><dd>{String(lead.display_id)}</dd></div><div><dt>Source</dt><dd>{sourceLabel(lead.source ?? lead.source_system)}</dd></div><div><dt>Owner</dt><dd>{String(lead.owner ?? 'Unassigned')}</dd></div><div><dt>Created</dt><dd>{date(String(lead.created_at ?? ''))}</dd></div>{Boolean(lead.date_of_birth) && <div><dt>Date of birth</dt><dd>{String(lead.date_of_birth)}</dd></div>}{Boolean(lead.referred_by) && <div><dt>Referred by</dt><dd>{String(lead.referred_by)}</dd></div>}{Boolean(lead.lead_type) && <div><dt>Lead type</dt><dd>{String(lead.lead_type)}</dd></div>}<div><dt>Preferred location</dt><dd>{String(lead.location ?? 'Not assigned')}</dd></div><div><dt>Time zone</dt><dd>{timezoneLabel(lead.timezone)}</dd></div></dl></Panel><Panel title={cadenceOver ? "Outcome" : "Next action"}><div className="next-action"><span className="status-icon"><PhoneIcon size={20} /></span><div><strong>{nextAction}</strong><p>{nextCopy}</p></div><Link className="secondary" href={`/leads/${lead.id}/cadence`}>View schedule</Link></div></Panel><Panel title="Notes">{stage === 'attention' && Boolean(lead.review_reason) ? <p><strong>Why this lead needs attention:</strong> {operationalMessage(lead.review_reason)}</p> : <p className="muted">No additional lead notes have been recorded.</p>}</Panel></div>;
 }
 
 function SmsPage({ detail, action }: { detail: LeadDetail; action: DashboardAction }) {
@@ -1172,7 +1120,7 @@ function CadenceRunCard({ run, index, total, pauses, leadId, callIdsByEvent, onR
             <span className="run-step-actions">
               {callIds.map((callId, callIndex) => <Link className="text-action" href={`/leads/${leadId}/conversations/calls?call=${encodeURIComponent(callId)}`} key={callId}>{callIds.length > 1 ? `Transcript ${callIndex + 1}` : 'View transcript'}</Link>)}
               {onReschedule && event.status === 'planned'
-                && <button className="text-action" type="button" onClick={() => onReschedule(event)}>Edit</button>}
+                && <button className="text-action" type="button" onClick={() => onReschedule(event)}>Reschedule</button>}
             </span>
           </div>
         </div>;
@@ -1187,16 +1135,12 @@ function CadenceRunCard({ run, index, total, pauses, leadId, callIdsByEvent, onR
   </details>;
 }
 
-function LeadCadencePage({ detail, action, templates, role }: { detail: LeadDetail; action: DashboardAction; templates: Array<Record<string, unknown>>; role: StaffUser['role'] }) {
+function LeadCadencePage({ detail, action }: { detail: LeadDetail; action: DashboardAction }) {
   const runs = splitCadenceRuns(detail.events);
   const current = runs[runs.length - 1] ?? [];
   const currentSummary = cadenceRunSummary(current);
   const currentTotal = currentSummary.expectedSteps ?? current.filter(isCadenceStep).length;
-  const [historyFilter, setHistoryFilter] = useState<'all' | 'standard' | 'personalized'>('all');
   const [rescheduling, setRescheduling] = useState<RunEvent | null>(null);
-  const visibleRuns = runs
-    .map((run, index) => ({ run, index, scope: cadenceRunScope(run) }))
-    .filter((item) => historyFilter === 'all' || item.scope === historyFilter);
   const callIdsByEvent = useMemo(() => {
     const grouped = new Map<string, string[]>();
     const calls = [...detail.calls].sort((a, b) => String(a.dialed_at ?? '').localeCompare(String(b.dialed_at ?? '')));
@@ -1226,11 +1170,8 @@ function LeadCadencePage({ detail, action, templates, role }: { detail: LeadDeta
       </p>
       {runs.length === 0
         ? <Empty title="No outreach scheduled" body="This lead has no cadence steps yet." />
-        : <><div className="cadence-history-filter" role="group" aria-label="Filter outreach history">
-            {([['all','All'],['standard','Standard outreach'],['personalized','Personalized outreach']] as const).map(([value, label]) => <button type="button" className={historyFilter === value ? 'selected' : ''} aria-pressed={historyFilter === value} onClick={() => setHistoryFilter(value)} key={value}>{label}</button>)}
-          </div>
-          {visibleRuns.length ? <div className="cadence-runs">
-            {visibleRuns.map(({ run, index }) => <div key={String(run[0].created_at ?? index)}>
+        : <div className="cadence-runs">
+            {runs.map((run, index) => <div key={String(run[0].created_at ?? index)}>
               {index > 0 && <p className="run-connector">
                 Restarted by staff · moved back to New at {date(String(run[0].created_at ?? ''))}
               </p>}
@@ -1244,9 +1185,9 @@ function LeadCadencePage({ detail, action, templates, role }: { detail: LeadDeta
                 onReschedule={index === runs.length - 1 ? setRescheduling : undefined}
               />
             </div>)}
-          </div> : <Empty title={`No ${historyFilter} outreach runs`} body="This lead has no outreach history in the selected category." />}</>}
+          </div>}
     </Panel>
-    <div className="stack"><Panel title="Personalized outreach"><p className="panel-subtitle">Changes here apply only to {String(detail.lead.full_name)}.</p><dl className="detail-list"><div><dt>Lead plan</dt><dd>{detail.cadence_version?.name ?? 'Standard outreach plan'}</dd></div>{detail.lead.global_version_name ? <div><dt>Global default</dt><dd>{String(detail.lead.global_version_name)}</dd></div> : null}<div><dt>Time zone</dt><dd>{timezoneLabel(detail.lead.timezone)}</dd></div><div><dt>Preferred location</dt><dd>{String(detail.lead.location ?? 'Not assigned')}</dd></div><div><dt>Next send window</dt><dd>Business hours</dd></div></dl><CadenceStudio action={action} templates={templates} leadId={String(detail.lead.id)} canPermanentlyDelete={role === 'super_admin'} /></Panel><Panel title="Contact rules"><Toggle label="Do not contact" enabled={String(detail.lead.status) === 'do_not_contact'} onChange={(next) => action(`leads/${detail.lead.id}/contact-rules`, 'POST', { do_not_contact: next })} /><p className="muted">Blocks calls and texts, cancels the remaining schedule, and moves the lead to Closed. Turning it off releases the block but does not restart outreach.</p></Panel></div>
+    <div className="stack"><Panel title="Contact rules"><Toggle label="Do not contact" enabled={String(detail.lead.status) === 'do_not_contact'} onChange={(next) => action(`leads/${detail.lead.id}/contact-rules`, 'POST', { do_not_contact: next })} /><p className="muted">Blocks calls and texts, cancels the remaining schedule, and moves the lead to Closed. Turning it off releases the block but does not restart outreach.</p></Panel></div>
   </div>{rescheduling && <RescheduleDialog event={rescheduling} leadId={String(detail.lead.id)} action={action} onClose={() => setRescheduling(null)} />}</>;
 }
 
@@ -1353,13 +1294,13 @@ function activityTime(value: string) {
 function activityDetails(details: Record<string, unknown>) {
   return Object.entries(details).filter(([key, value]) => key !== 'lead_id' && key !== 'request_id' && value !== null && ['string','number','boolean'].includes(typeof value));
 }
-function ActivityTimeline({ entries, compact = false }: { entries: ActivityEntry[]; compact?: boolean }) {
+function ActivityTimeline({ entries }: { entries: ActivityEntry[] }) {
   if (!entries.length) return <Empty title="No activity yet" body="Recorded activity for this lead will appear here." />;
   const groups = new Map<string, ActivityEntry[]>();
   entries.forEach((entry) => { const key = activityDayLabel(entry.occurred_at); groups.set(key, [...(groups.get(key) ?? []), entry]); });
-  return <div className={`activity-timeline ${compact ? 'compact' : ''}`}>{Array.from(groups).map(([day, items]) => <section key={day}><h3>{day}</h3><div>{items.map((entry) => {
+  return <div className="activity-timeline">{Array.from(groups).map(([day, items]) => <section key={day}><h3>{day}</h3><div>{items.map((entry) => {
     const details = activityDetails(entry.details);
-    return <article key={entry.id}><span className={`activity-node activity-${entry.category}`}><ActivityIcon kind={activityIconKind(entry)} /></span><div className="activity-card"><header><div><strong>{entry.title}</strong><span>{activityTime(entry.occurred_at)}</span></div><p><i>{entry.actor_type === 'automation' ? 'A' : initials(entry.actor_name)}</i><b>{entry.actor_name}</b><small>{entry.actor_type === 'automation' ? 'Automated event' : 'Team member'}</small></p></header>{details.length > 0 && !compact && <details><summary>View change</summary><dl>{details.map(([key, value]) => <div key={key}><dt>{displayEnum(key)}</dt><dd>{displayEnum(value)}</dd></div>)}</dl></details>}</div></article>;
+    return <article key={entry.id}><span className={`activity-node activity-${entry.category}`}><ActivityIcon kind={activityIconKind(entry)} /></span><div className="activity-card"><header><div><strong>{entry.title}</strong><span>{activityTime(entry.occurred_at)}</span></div><p><i>{entry.actor_type === 'automation' ? 'A' : initials(entry.actor_name)}</i><b>{entry.actor_name}</b><small>{entry.actor_type === 'automation' ? 'Automated event' : 'Team member'}</small></p></header>{details.length > 0 && <details><summary>View change</summary><dl>{details.map(([key, value]) => <div key={key}><dt>{displayEnum(key)}</dt><dd>{displayEnum(value)}</dd></div>)}</dl></details>}</div></article>;
   })}</div></section>)}</div>;
 }
 function initials(name:string){return name.split(/\s+/).map((part)=>part[0]).join('').slice(0,2).toUpperCase();}
@@ -1403,74 +1344,7 @@ function filterSnapshot(snapshot: Snapshot, location: string): Snapshot {
   };
 }
 
-function ownerOptions(staff: StaffMember[], legacyOwner?: string): SelectOption[] {
-  const active = staff.map((member) => ({ value: member.user_id, label: member.display_name }));
-  if (legacyOwner && !active.some((option) => option.label === legacyOwner)) active.unshift({ value: `legacy:${legacyOwner}`, label: legacyOwner });
-  return active.length ? active : [{ value: 'legacy:Unassigned', label: 'Unassigned' }];
-}
-
-function EditLeadDialog({ detail, action, staff, onClose }: {
-  detail: LeadDetail;
-  action: DashboardAction;
-  staff: StaffMember[];
-  onClose: () => void;
-}) {
-  const lead = detail.lead as Record<string, unknown>;
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
-  const [leadType, setLeadType] = useState(String(lead.lead_type ?? 'Physical Therapy'));
-  const [leadLocation, setLeadLocation] = useState(String(lead.location ?? locations[0]));
-  const choices = ownerOptions(staff, String(lead.owner || 'Unassigned'));
-  const configuredOwner = String(lead.owner_user_id ?? '');
-  const initialOwner = choices.some((choice) => choice.value === configuredOwner)
-    ? configuredOwner
-    : choices.find((choice) => choice.label === lead.owner)?.value ?? choices[0].value;
-  const [leadOwner, setLeadOwner] = useState(initialOwner);
-  const fullName = String(lead.full_name ?? '').trim().split(/\s+/);
-  async function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (saving) return;
-    const data = new FormData(event.currentTarget);
-    setSaving(true);
-    setError('');
-    const selectedOwner = staff.find((member) => member.user_id === leadOwner);
-    const result = await action(`leads/${String(lead.id)}`, 'PATCH', {
-      first_name: String(data.get('first_name') ?? '').trim(),
-      last_name: String(data.get('last_name') ?? '').trim(),
-      email: String(data.get('email') ?? '').trim() || null,
-      date_of_birth: String(data.get('date_of_birth') ?? ''),
-      referred_by: String(data.get('referred_by') ?? '').trim() || null,
-      lead_type: leadType,
-      location: leadLocation,
-      owner: selectedOwner?.display_name ?? leadOwner.replace(/^legacy:/, ''),
-      owner_user_id: selectedOwner?.user_id ?? null,
-    });
-    setSaving(false);
-    if (!result) { setError('The changes could not be saved.'); return; }
-    onClose();
-  }
-  return <ModalShell labelId="edit-lead-title" onClose={onClose}>
-      <header><div><h2 id="edit-lead-title">Edit lead</h2><p>Correct this patient&rsquo;s details. The phone number identifies them and cannot change.</p></div>
-        <button className="close-button" type="button" onClick={onClose} aria-label="Close edit lead dialog">×</button></header>
-      <form onSubmit={submit}>
-        <div className="form-grid">
-          <label>First name<input name="first_name" defaultValue={String(lead.first_name ?? fullName[0] ?? '')} autoFocus required /></label>
-          <label>Last name<input name="last_name" defaultValue={String(lead.last_name ?? fullName.slice(1).join(' '))} required /></label>
-          <label>Phone<input name="phone" value={String(lead.phone_e164 ?? '')} readOnly disabled /><small className="field-hint">Used to match this patient everywhere. Add a new lead if the number changed.</small></label>
-          <label>Email<input name="email" type="email" defaultValue={String(lead.email ?? '')} placeholder="name@example.com" /></label>
-          <label>Date of birth<input name="date_of_birth" type="date" defaultValue={String(lead.date_of_birth ?? '')} required /></label>
-          <label>Who referred this lead?<input name="referred_by" defaultValue={String(lead.referred_by ?? '')} placeholder="Name or organization" /></label>
-          <div className="form-select-field form-field-full"><span>Lead type</span><SelectMenu name="lead_type" ariaLabel="Lead type" value={leadType} onChange={setLeadType} options={[...new Set([leadType, 'Physical Therapy', 'Wellness'])].map((item) => ({ value: item, label: item }))} /></div>
-          <div className="form-select-field"><span>Location</span><SelectMenu name="location" ariaLabel="Lead location" value={leadLocation} onChange={setLeadLocation} options={locations.map((item) => ({ value: item, label: item }))} /></div>
-          <div className="form-select-field"><span>Owner</span><SelectMenu name="owner" ariaLabel="Lead owner" value={leadOwner} onChange={setLeadOwner} options={choices} /></div>
-        </div>
-        {error && <p className="field-error">{error}</p>}
-        <footer><button className="secondary" type="button" onClick={onClose} disabled={saving}>Cancel</button><button className="primary" type="submit" disabled={saving}>{saving ? 'Saving…' : 'Save changes'}</button></footer>
-      </form>
-    </ModalShell>;
-}
-
-function AddLeadDialog({ defaultLocation, staff, onAdd, onClose }: { defaultLocation: string; staff: StaffMember[]; onAdd: (lead: LeadCreateInput) => Promise<boolean>; onClose: () => void }) {
+function AddLeadDialog({ defaultLocation, onAdd, onClose }: { defaultLocation: string; onAdd: (lead: LeadCreateInput) => Promise<boolean>; onClose: () => void }) {
   const [saving, setSaving] = useState(false);
   const [phoneError, setPhoneError] = useState('');
   // Reception types ten digits and the +1 badge stands in for the country
@@ -1479,8 +1353,6 @@ function AddLeadDialog({ defaultLocation, staff, onAdd, onClose }: { defaultLoca
   const [phoneValue, setPhoneValue] = useState('');
   const [leadType, setLeadType] = useState('Physical Therapy');
   const [leadLocation, setLeadLocation] = useState(defaultLocation);
-  const choices = ownerOptions(staff);
-  const [leadOwner, setLeadOwner] = useState(choices[0].value);
   const [idempotencyKey] = useState(() => crypto.randomUUID());
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -1495,7 +1367,6 @@ function AddLeadDialog({ defaultLocation, staff, onAdd, onClose }: { defaultLoca
     setPhoneError('');
     if (!firstName || !lastName || saving) return;
     setSaving(true);
-    const selectedOwner = staff.find((member) => member.user_id === leadOwner);
     await onAdd({
       idempotency_key: idempotencyKey,
       first_name: firstName,
@@ -1506,11 +1377,9 @@ function AddLeadDialog({ defaultLocation, staff, onAdd, onClose }: { defaultLoca
       referred_by: String(data.get('referred_by') ?? '').trim() || null,
       lead_type: String(data.get('lead_type') ?? 'Physical Therapy') as LeadCreateInput['lead_type'],
       location: String(data.get('location') ?? defaultLocation),
-      owner: selectedOwner?.display_name ?? leadOwner.replace(/^legacy:/, ''),
-      owner_user_id: selectedOwner?.user_id ?? null,
       contact_consent: true,
     });
     setSaving(false);
   }
-  return <ModalShell labelId="add-lead-title" onClose={onClose}><header><div><h2 id="add-lead-title">Add lead</h2><p>Save a lead and schedule their outreach cadence.</p></div><button className="close-button" type="button" onClick={onClose} aria-label="Close add lead dialog">×</button></header><form onSubmit={submit}><div className="form-grid"><label>First name<input name="first_name" autoComplete="given-name" autoFocus required /></label><label>Last name<input name="last_name" autoComplete="family-name" required /></label><label>Phone<span className="phone-field">{!phoneValue.trimStart().startsWith('+') && <i aria-hidden="true">+1</i>}<input name="phone" type="tel" inputMode="tel" autoComplete="tel" value={phoneValue} onChange={(event) => setPhoneValue(event.target.value)} placeholder="949 555 0123 or +91 98205 37790" maxLength={18} aria-invalid={Boolean(phoneError)} required /></span>{phoneError && <small className="field-error">{phoneError}</small>}</label><label>Email<input name="email" type="email" autoComplete="email" placeholder="name@example.com" /></label><label>Date of birth<input name="date_of_birth" type="date" autoComplete="bday" required /></label><label>Who referred this lead?<input name="referred_by" placeholder="Name or organization" /></label><div className="form-select-field form-field-full"><span>Lead type</span><SelectMenu name="lead_type" ariaLabel="Lead type" value={leadType} onChange={setLeadType} options={['Physical Therapy','Wellness'].map((item) => ({ value: item, label: item }))} /></div><div className="form-select-field"><span>Location</span><SelectMenu name="location" ariaLabel="Lead location" value={leadLocation} onChange={setLeadLocation} options={locations.map((item) => ({ value: item, label: item }))} /></div><div className="form-select-field"><span>Owner</span><SelectMenu name="owner" ariaLabel="Lead owner" value={leadOwner} onChange={setLeadOwner} options={choices} /></div></div><footer><button className="secondary" type="button" onClick={onClose} disabled={saving}>Cancel</button><button className="primary" type="submit" disabled={saving}>{saving ? 'Saving…' : 'Add lead'}</button></footer></form></ModalShell>;
+  return <ModalShell labelId="add-lead-title" onClose={onClose}><header><div><h2 id="add-lead-title">Add lead</h2><p>Save a lead and schedule their outreach cadence. New leads are automatically assigned to you.</p></div><button className="close-button" type="button" onClick={onClose} aria-label="Close add lead dialog">×</button></header><form onSubmit={submit}><div className="form-grid"><label>First name<input name="first_name" autoComplete="given-name" autoFocus required /></label><label>Last name<input name="last_name" autoComplete="family-name" required /></label><label>Phone<span className="phone-field">{!phoneValue.trimStart().startsWith('+') && <i aria-hidden="true">+1</i>}<input name="phone" type="tel" inputMode="tel" autoComplete="tel" value={phoneValue} onChange={(event) => setPhoneValue(event.target.value)} placeholder="949 555 0123 or +91 98205 37790" maxLength={18} aria-invalid={Boolean(phoneError)} required /></span>{phoneError && <small className="field-error">{phoneError}</small>}</label><label>Email<input name="email" type="email" autoComplete="email" placeholder="name@example.com" /></label><label>Date of birth<input name="date_of_birth" type="date" autoComplete="bday" required /></label><label>Who referred this lead?<input name="referred_by" placeholder="Name or organization" /></label><div className="form-select-field form-field-full"><span>Lead type</span><SelectMenu name="lead_type" ariaLabel="Lead type" value={leadType} onChange={setLeadType} options={['Physical Therapy','Wellness'].map((item) => ({ value: item, label: item }))} /></div><div className="form-select-field form-field-full"><span>Location</span><SelectMenu name="location" ariaLabel="Lead location" value={leadLocation} onChange={setLeadLocation} options={locations.map((item) => ({ value: item, label: item }))} /></div></div><footer><button className="secondary" type="button" onClick={onClose} disabled={saving}>Cancel</button><button className="primary" type="submit" disabled={saving}>{saving ? 'Saving…' : 'Add lead'}</button></footer></form></ModalShell>;
 }

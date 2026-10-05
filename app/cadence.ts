@@ -2,7 +2,6 @@ import type { CadenceStep } from './dashboard-data';
 
 export type CadenceEvent = Record<string, unknown>;
 export type CallSession = Record<string, unknown>;
-export type CadenceScope = 'standard' | 'personalized';
 
 export function splitCadenceRuns(events: CadenceEvent[]) {
   const batches = new Map<string, CadenceEvent[]>();
@@ -35,8 +34,12 @@ export function isCadenceStep(event: CadenceEvent) {
   return event.day_offset !== null && event.day_offset !== undefined;
 }
 
-export function cadenceRunScope(run: CadenceEvent[]): CadenceScope {
-  return run.some((event) => event.cadence_scope === 'personalized') ? 'personalized' : 'standard';
+export function cadenceActionDescription(description: string) {
+  return description.trim().replace(/^day\s+\d+\b[\s:–—-]*/i, '');
+}
+
+export function cadenceStepName(step: Pick<CadenceStep, 'day_offset' | 'description'>) {
+  return `Day ${step.day_offset} ${cadenceActionDescription(step.description)}`.trim();
 }
 
 export function cadenceRunSummary(run: CadenceEvent[]) {
@@ -98,6 +101,6 @@ export function reorderCadenceSteps(steps: CadenceStep[], from: number, to: numb
   const next = [...steps];
   const destinationDay = next[to].day_offset;
   const [moved] = next.splice(from, 1);
-  next.splice(to, 0, { ...moved, day_offset: destinationDay });
+  next.splice(to, 0, { ...moved, day_offset: destinationDay, description: cadenceStepName({ ...moved, day_offset: destinationDay }) });
   return next;
 }
