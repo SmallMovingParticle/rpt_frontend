@@ -68,8 +68,6 @@ export type LeadCreateInput = {
   referred_by: string | null;
   lead_type: 'Physical Therapy' | 'Wellness';
   location: string;
-  owner: string;
-  owner_user_id?: string | null;
   contact_consent: true;
 };
 
@@ -113,7 +111,6 @@ export type LeadDetail = {
   appointments: Array<Record<string, unknown>>;
   history: Array<Record<string, unknown>>;
   activity: ActivityEntry[];
-  message_overrides: Array<Record<string, unknown>>;
   cadence_actions?: Array<Record<string, unknown>>;
   cadence_version?: CadenceVersion | null;
 };

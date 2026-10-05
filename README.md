@@ -96,9 +96,14 @@ Lead lists and workspaces render only records returned by the dashboard API. The
 so worker and provider updates appear without a manual reload. Call artifacts are text-only; the CRM does not
 store or expose call recordings.
 
-The lead's Activity tab shows **Team activity**: only staff-made changes, such as lead creation, detail
-updates, and cadence pauses or resumes, attributed by name and date. It has no category filters;
-automated events remain available in the other lead tabs and the overview's recent activity.
+The lead's Activity tab shows **Team activity**: only staff-made changes, such as lead creation,
+stage changes, and cadence pauses or resumes, attributed by name and date. It has no category filters;
+automated events remain available in the other lead tabs. Overview has no duplicate activity panel.
+
+New leads are always owned by the signed-in user; there is no owner selector or lead-edit dialog.
+Cadence Studio manages global versions only. Step names automatically use their current day followed
+by the action description, including after reordering. Personalized outreach controls and endpoints
+have been removed; historical runs remain readable.
 
 ## Quality checks
 

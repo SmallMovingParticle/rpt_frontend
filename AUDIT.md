@@ -1,5 +1,25 @@
 # Dashboard and system audit
 
+## 2026-10-05 simplification follow-up
+
+- Removed lead Overview's Recent activity panel and the lead Edit dialog/functionality, including the
+  backend profile-update endpoint. Dedicated Team activity remains unchanged.
+- Add Lead has no Owner selector. The backend assigns both owner name and ID from the authenticated
+  creator, ignoring supplied owner fields; admin and two employee identities are covered by tests.
+- Removed personalized outreach controls and scoped cadence/message write paths. Future cadence starts
+  and SMS copy use global definitions. Historical runs and existing schedules/data are preserved; a
+  read-only aggregate check found no active scoped versions, drafts, unfinished scoped steps, or overrides.
+- Global draft step names automatically track their actual day after changes or reordering, preserving the
+  action wording. The backend applies the same rule on save and clone.
+- Verification: 208 backend tests passed (three optional integration tests skipped), 15 frontend tests passed,
+  lint/typecheck, wheel build, and both frontend production builds passed. Admin browser checks verified
+  automatic step names without saving; employee checks verified navigation, removed controls, Activity,
+  and mobile lead/form layouts. No console errors were observed. No records or provider actions were changed.
+- No new migration or deployment is required for the local verification. Production still needs the
+  frontend/backend code deployed together. Existing runtime/provider safeguards remain in place.
+
+The audit below records the earlier 2026-10-02 state; its Edit/personalized-control checks are historical.
+
 Date: 2026-10-02. Scope: `F:\rpt\rpt_frontend`, its companion backend, and confirmed disposable build
 artifacts directly within `F:\rpt`. This is an application/runtime audit, not an operating-system,
 whole-drive, penetration-test, or compliance certification.

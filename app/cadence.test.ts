@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   cadenceCallNames,
-  cadenceRunScope,
+  cadenceActionDescription,
+  cadenceStepName,
   cadenceRunSummary,
   reorderCadenceSteps,
   splitCadenceRuns,
@@ -71,9 +72,11 @@ test('does not count a standalone callback as a cadence step', () => {
   assert.equal(summary.label, 'Ended after 1 step');
 });
 
-test('resolves standard and personalized scopes', () => {
-  assert.equal(cadenceRunScope([event()]), 'standard');
-  assert.equal(cadenceRunScope([event({ cadence_scope: 'personalized' })]), 'personalized');
+test('automatically names steps using their actual day and preserves the action', () => {
+  assert.equal(cadenceStepName({ day_offset: 5, description: 'Day 0 initial scheduling call' }), 'Day 5 initial scheduling call');
+  assert.equal(cadenceStepName({ day_offset: 0, description: 'Follow-up message' }), 'Day 0 Follow-up message');
+  assert.equal(cadenceStepName({ day_offset: 365, description: 'DAY 1: Follow-up' }), 'Day 365 Follow-up');
+  assert.equal(cadenceActionDescription('Day 3 Scheduling call'), 'Scheduling call');
 });
 
 test('names calls by absolute outreach and chronological call order', () => {
@@ -98,7 +101,7 @@ test('dragging across days adopts the destination day', () => {
   ];
   const moved = reorderCadenceSteps(steps, 0, 2);
 
-  assert.deepEqual(moved.map((step) => step.description), ['B', 'C', 'A']);
+  assert.deepEqual(moved.map((step) => step.description), ['B', 'C', 'Day 3 A']);
   assert.equal(moved[2].day_offset, 3);
   assert.equal(steps[0].day_offset, 0);
 });
