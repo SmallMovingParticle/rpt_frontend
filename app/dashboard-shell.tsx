@@ -4,9 +4,9 @@ import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { FormEvent, ReactNode, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { cadenceActionDescription, cadenceCallNames, cadenceStepName, cadenceRunSummary, isCadenceStep, reorderCadenceSteps, splitCadenceRuns, type CadenceEvent } from './cadence';
-import { ActivityEntry, CadenceStep, CadenceVersion, emptySnapshot, Lead, LeadCreateInput, LeadDetail, LeadStage, Snapshot, StaffMember } from './dashboard-data';
+import { ActivityEntry, CadenceStep, CadenceVersion, emptySnapshot, Lead, LeadCreateInput, LeadDetail, LeadStage, NumberBlock, Snapshot, StaffMember } from './dashboard-data';
 import { AssistantDock, AssistantPage, ThemeToggle, setLeadDragData } from './assistant';
-import { ActivityKind, clientErrorMessage, clinicDateTimeValue, clinicWallTimeToIso, CLINIC_TZ, CLINIC_TZ_LABEL, displayEnum, operationalMessage, sourceLabel, statusTone, teamActivity, timezoneLabel } from './display';
+import { ActivityKind, clientErrorMessage, clinicDateTimeValue, clinicWallTimeToIso, CLINIC_TZ, CLINIC_TZ_LABEL, defaultAfterUnblock, displayEnum, numberBlockMessage, operationalMessage, UNBLOCK_RESULT, type AfterUnblock, sourceLabel, statusTone, teamActivity, timezoneLabel } from './display';
 import type { StaffUser } from './session';
 import { dashboardFetch } from './dashboard-client';
 
@@ -19,7 +19,7 @@ const statusMeta: Record<LeadStage, { label: string }> = {
 };
 
 const locations = ['Dana Point', 'Laguna Niguel', 'Mission Viejo'];
-type DashboardAction = (path: string, method: string, body?: unknown) => Promise<Record<string, unknown> | null>;
+type DashboardAction = (path: string, method: string, body?: unknown, successMessage?: string) => Promise<Record<string, unknown> | null>;
 
 function actionFailureCopy(path: string) {
   if (/\/sms$/.test(path)) return 'Message was not sent. Review the phone number before trying again.';
@@ -274,7 +274,7 @@ export function DashboardShell({ user, staff }: { user: StaffUser; staff: StaffM
     window.setTimeout(() => setNotice(null), 3000);
   }
 
-  async function action(path: string, method: string, body?: unknown) {
+  async function action(path: string, method: string, body?: unknown, successMessage = 'Saved successfully.') {
     const failureCopy = actionFailureCopy(path);
     try {
       const response = await dashboardFetch(`/api/dashboard/${path}`, {
@@ -284,7 +284,7 @@ export function DashboardShell({ user, staff }: { user: StaffUser; staff: StaffM
       if (!response.ok) {
         throw new Error(clientErrorMessage(data.detail, failureCopy));
       }
-      showNotice('Saved successfully.');
+      showNotice(successMessage);
       setReloadKey((value) => value + 1);
       return data;
     } catch (error) {
@@ -425,7 +425,7 @@ function renderPage(path: string, view: string | null, query: string | null, sta
   if (path === '/administration/templates') return <TemplateStudio snapshot={snapshot} action={action} onPublished={onTemplatePublished} />;
   if (/^\/leads\/[0-9a-f-]+\/conversations\/sms$/i.test(path)) return <LeadFrame detail={leadDetail!} tab="conversations" action={action} role={role}><SmsPage detail={leadDetail!} action={action} /></LeadFrame>;
   if (/^\/leads\/[0-9a-f-]+\/conversations\/calls$/i.test(path)) return <LeadFrame detail={leadDetail!} tab="conversations" action={action} role={role}><CallsPage detail={leadDetail!} /></LeadFrame>;
-  if (/^\/leads\/[0-9a-f-]+\/cadence$/i.test(path)) return <LeadFrame detail={leadDetail!} tab="cadence" action={action} role={role}><LeadCadencePage detail={leadDetail!} action={action} /></LeadFrame>;
+  if (/^\/leads\/[0-9a-f-]+\/cadence$/i.test(path)) return <LeadFrame detail={leadDetail!} tab="cadence" action={action} role={role}><LeadCadencePage detail={leadDetail!} action={action} role={role} /></LeadFrame>;
   if (/^\/leads\/[0-9a-f-]+\/appointments$/i.test(path)) return <LeadFrame detail={leadDetail!} tab="appointments" action={action} role={role}><LeadAppointmentsPage detail={leadDetail!} /></LeadFrame>;
   if (/^\/leads\/[0-9a-f-]+\/(?:activity|history)$/i.test(path)) return <LeadFrame detail={leadDetail!} tab="activity" action={action} role={role}><LeadActivityPage detail={leadDetail!} /></LeadFrame>;
   if (/^\/leads\/[0-9a-f-]+$/i.test(path)) return <LeadFrame detail={leadDetail!} tab="overview" action={action} role={role}><LeadOverview detail={leadDetail!} /></LeadFrame>;
@@ -924,6 +924,8 @@ function LeadFrame({ detail, tab, action, role, children }: { detail: LeadDetail
   const id = String(lead.id);
   const stage = String(lead.stage ?? 'cadence') as LeadStage;
   const phone = String(lead.phone_e164 ?? lead.phone ?? 'No phone recorded');
+  const numberBlock = (lead.number_block ?? null) as NumberBlock | null;
+  const [unblocking, setUnblocking] = useState(false);
   // Count only the current cadence run: a restarted lead keeps its earlier
   // events, and including them read as "12 of 16" on an eight-step cadence.
   const currentRun = splitCadenceRuns(detail.events).at(-1) ?? [];
@@ -946,7 +948,7 @@ This removes the lead and everything attached to it - cadence schedule, calls, t
     if (await action(`leads/${id}`,'DELETE')) router.push('/leads');
     else setDeleting(false);
   }
-  return <><div className="breadcrumbs"><Link href="/leads">Lead Pipeline</Link><span>/</span><span>{String(lead.display_id)}</span><span>/</span><strong>{lead.full_name}</strong></div><section className="lead-header"><div className="lead-avatar">{initials(lead.full_name)}</div><div className="lead-identity"><h1>{lead.full_name}</h1><span><PhoneIcon />{phone}</span></div><StatusBadge stage={stage} paused={cadencePaused} />{total > 0 && !cadenceOver && <span className="version">{String(lead.cadence_version_name ?? detail.cadence_version?.name ?? 'Cadence')} · {progress} of {total}</span>}<span className="location"><MapPinIcon />{String(lead.location ?? 'Not assigned')}</span><div className="record-actions">{!cadenceOver && <button className="secondary icon-label" type="button" disabled={busy} onClick={toggleCadence} title={cadencePaused ? 'Resume cadence' : 'Pause cadence'}>{cadencePaused ? <PlayIcon /> : <PauseIcon />}{cadencePaused ? 'Resume cadence':'Pause cadence'}</button>}<Link className="primary icon-label" href={`/leads/${id}/conversations/sms`}><EnvelopeIcon />Send SMS</Link>{role === 'super_admin' && <button className="danger-button icon-label" type="button" disabled={busy || deleting} onClick={removeLead} title="Delete lead" aria-label="Delete lead"><TrashIcon />{deleting ? 'Deleting…' : 'Delete lead'}</button>}</div></section><nav className="record-tabs">{[['overview','Overview',`/leads/${id}`],['conversations','Conversations',`/leads/${id}/conversations/sms`],['cadence','Cadence',`/leads/${id}/cadence`],['appointments','Appointments',`/leads/${id}/appointments`],['activity','Activity',`/leads/${id}/activity`]].map(([key,label,href])=><Link className={tab===key?'active':''} aria-current={tab === key ? 'page' : undefined} href={href} key={key}>{label}</Link>)}</nav>{stage === 'attention' && Boolean(lead.review_reason) && <Alert tone="warning"><strong>Needs attention:</strong> {operationalMessage(lead.review_reason)}</Alert>}{children}</>;
+  return <><div className="breadcrumbs"><Link href="/leads">Lead Pipeline</Link><span>/</span><span>{String(lead.display_id)}</span><span>/</span><strong>{lead.full_name}</strong></div><section className="lead-header"><div className="lead-avatar">{initials(lead.full_name)}</div><div className="lead-identity"><h1>{lead.full_name}</h1><span><PhoneIcon />{phone}</span></div><StatusBadge stage={stage} paused={cadencePaused} />{numberBlock && <span className="status-pill blocked"><i aria-hidden="true">⊘</i>Number blocked</span>}{total > 0 && !cadenceOver && <span className="version">{String(lead.cadence_version_name ?? detail.cadence_version?.name ?? 'Cadence')} · {progress} of {total}</span>}<span className="location"><MapPinIcon />{String(lead.location ?? 'Not assigned')}</span><div className="record-actions">{!cadenceOver && <button className="secondary icon-label" type="button" disabled={busy} onClick={toggleCadence} title={cadencePaused ? 'Resume cadence' : 'Pause cadence'}>{cadencePaused ? <PlayIcon /> : <PauseIcon />}{cadencePaused ? 'Resume cadence':'Pause cadence'}</button>}<Link className="primary icon-label" href={`/leads/${id}/conversations/sms`}><EnvelopeIcon />Send SMS</Link>{role === 'super_admin' && <button className="danger-button icon-label" type="button" disabled={busy || deleting} onClick={removeLead} title="Delete lead" aria-label="Delete lead"><TrashIcon />{deleting ? 'Deleting…' : 'Delete lead'}</button>}</div></section><nav className="record-tabs">{[['overview','Overview',`/leads/${id}`],['conversations','Conversations',`/leads/${id}/conversations/sms`],['cadence','Cadence',`/leads/${id}/cadence`],['appointments','Appointments',`/leads/${id}/appointments`],['activity','Activity',`/leads/${id}/activity`]].map(([key,label,href])=><Link className={tab===key?'active':''} aria-current={tab === key ? 'page' : undefined} href={href} key={key}>{label}</Link>)}</nav>{numberBlock && <Alert tone="danger"><strong>This number is blocked.</strong> No calls or texts will go out to it. {numberBlockMessage(numberBlock)}{role === 'super_admin' && <> <button className="link-button" type="button" onClick={() => setUnblocking(true)}>Unblock number</button></>}</Alert>}{stage === 'attention' && Boolean(lead.review_reason) && <Alert tone="warning"><strong>Needs attention:</strong> {operationalMessage(lead.review_reason)}</Alert>}{children}{unblocking && <UnblockDialog detail={detail} action={action} onClose={() => setUnblocking(false)} />}</>;
 }
 
 function LeadOverview({ detail }: { detail: LeadDetail }) {
@@ -1135,7 +1137,8 @@ function CadenceRunCard({ run, index, total, pauses, leadId, callIdsByEvent, onR
   </details>;
 }
 
-function LeadCadencePage({ detail, action }: { detail: LeadDetail; action: DashboardAction }) {
+function LeadCadencePage({ detail, action, role }: { detail: LeadDetail; action: DashboardAction; role: StaffUser['role'] }) {
+  const [unblocking, setUnblocking] = useState(false);
   const runs = splitCadenceRuns(detail.events);
   const current = runs[runs.length - 1] ?? [];
   const currentSummary = cadenceRunSummary(current);
@@ -1187,8 +1190,41 @@ function LeadCadencePage({ detail, action }: { detail: LeadDetail; action: Dashb
             </div>)}
           </div>}
     </Panel>
-    <div className="stack"><Panel title="Contact rules"><Toggle label="Do not contact" enabled={String(detail.lead.status) === 'do_not_contact'} onChange={(next) => action(`leads/${detail.lead.id}/contact-rules`, 'POST', { do_not_contact: next })} /><p className="muted">Blocks calls and texts, cancels the remaining schedule, and moves the lead to Closed. Turning it off releases the block but does not restart outreach.</p></Panel></div>
-  </div>{rescheduling && <RescheduleDialog event={rescheduling} leadId={String(detail.lead.id)} action={action} onClose={() => setRescheduling(null)} />}</>;
+    <div className="stack"><ContactRulesPanel detail={detail} action={action} role={role} onUnblock={() => setUnblocking(true)} /></div>
+  </div>{rescheduling && <RescheduleDialog event={rescheduling} leadId={String(detail.lead.id)} action={action} onClose={() => setRescheduling(null)} />}{unblocking && <UnblockDialog detail={detail} action={action} onClose={() => setUnblocking(false)} />}</>;
+}
+
+// The switch reports the number: ON whenever calls and texts to it are blocked,
+// whether the Sheet, a call or this switch did it. Anyone can block; only an
+// admin can unblock, and only through the dialog that decides what happens next.
+function ContactRulesPanel({ detail, action, role, onUnblock }: { detail: LeadDetail; action: DashboardAction; role: StaffUser['role']; onUnblock: () => void }) {
+  const block = (detail.lead.number_block ?? null) as NumberBlock | null;
+  const blocked = Boolean(block) || String(detail.lead.status) === 'do_not_contact';
+  const canChange = !blocked || role === 'super_admin';
+  return <Panel title="Contact rules"><Toggle label="Do not contact" enabled={blocked} onChange={canChange ? async (next) => {
+    if (next) return action(`leads/${detail.lead.id}/contact-rules`, 'POST', { do_not_contact: true }, 'Do not contact is on. No calls or texts will go to this number.');
+    onUnblock();
+  } : undefined} /><p className="muted">{blocked
+    ? (role === 'super_admin' ? 'Turning it off unblocks the number and asks what outreach should do next.' : 'Only an admin can unblock this number.')
+    : 'Blocks calls and texts to this number for every lead on it, cancels the remaining schedule, and updates the Google Sheet.'}</p></Panel>;
+}
+
+function UnblockDialog({ detail, action, onClose }: { detail: LeadDetail; action: DashboardAction; onClose: () => void }) {
+  const block = (detail.lead.number_block ?? null) as NumberBlock | null;
+  const [choice, setChoice] = useState<AfterUnblock>(() => defaultAfterUnblock(block?.blocked_at));
+  const [saving, setSaving] = useState(false);
+  const options: Array<[AfterUnblock, string, string]> = [
+    ['continue', 'Continue the remaining steps', 'Picks up at the next step, keeping the same gaps between steps. Best when the block was a mistake or short.'],
+    ['restart', 'Start over from Day 0', 'Builds a fresh schedule. Best when weeks have passed.'],
+  ];
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSaving(true);
+    const result = await action(`leads/${detail.lead.id}/contact-rules`, 'POST', { do_not_contact: false, after_unblock: choice }, UNBLOCK_RESULT[choice]);
+    setSaving(false);
+    if (result) onClose();
+  }
+  return <ModalShell className="unblock-dialog" labelId="unblock-title" onClose={onClose}><header><div><h2 id="unblock-title">Unblock this number?</h2><p>{block ? numberBlockMessage(block) : 'This lead is marked Do not contact.'} Calls and texts to this number will be allowed again, during business hours only, and the Google Sheet is updated to match.</p></div><button className="close-button" type="button" onClick={onClose} aria-label="Close unblock dialog">×</button></header><form onSubmit={submit}><fieldset className="choice-list"><legend>What should outreach do next?</legend>{options.map(([value, label, hint]) => <label key={value} className={choice === value ? 'selected' : ''}><input type="radio" name="after-unblock" value={value} checked={choice === value} onChange={() => setChoice(value)} /><span><strong>{label}</strong><small>{hint}</small></span></label>)}</fieldset><footer><button className="secondary" type="button" onClick={onClose} disabled={saving}>Cancel</button><button className="primary" type="submit" disabled={saving}>{saving ? 'Unblocking…' : 'Unblock number'}</button></footer></form></ModalShell>;
 }
 
 function RescheduleDialog({ event, leadId, action, onClose }: { event: RunEvent; leadId: string; action: DashboardAction; onClose: () => void }) {
@@ -1233,7 +1269,7 @@ function StatusText({ status }: { status:string }) { const tone = statusTone(sta
 function PageTitle({ title, subtitle, tools }: { title:string; subtitle:string; tools?:ReactNode }) { return <header className="page-heading"><div><h1>{title}</h1><p>{subtitle}</p></div>{tools&&<div className="page-tools">{tools}</div>}</header>; }
 function Panel({ title, children }: { title?:string; children:ReactNode }) { return <section className="panel">{title&&<h2>{title}</h2>}{children}</section>; }
 function DataTable({ heads, children }: { heads:string[]; children:ReactNode }) { return <div className="table-scroll"><table><thead><tr>{heads.map((head,index)=><th key={`${head}-${index}`}>{head}</th>)}</tr></thead><tbody>{children}</tbody></table></div>; }
-function Alert({ children, tone='info' }: { children:ReactNode; tone?:'info'|'warning'|'success' }) { return <div className={`alert ${tone}`}><b aria-hidden="true">{tone==='warning'?'!':tone==='success'?'✓':'i'}</b><div>{children}</div></div>; }
+function Alert({ children, tone='info' }: { children:ReactNode; tone?:'info'|'warning'|'success'|'danger' }) { return <div className={`alert ${tone}`} role={tone==='danger'?'alert':undefined}><b aria-hidden="true">{tone==='warning'||tone==='danger'?'!':tone==='success'?'✓':'i'}</b><div>{children}</div></div>; }
 function Empty({ title, body }: { title:string; body:string }) { return <div className="empty"><h2>{title}</h2><p>{body}</p></div>; }
 function OfflineState({ onRetry }: { onRetry: () => void }) { return <><PageTitle title="Dashboard unavailable" subtitle="The latest data could not be loaded." /><Panel><div className="offline-state"><h2>Connection lost</h2><p>Check the service connection, then try again. No changes were made.</p><button className="primary" type="button" onClick={onRetry}>Retry connection</button></div></Panel></>; }
 function Stat({ label,value,trend }: { label:string; value:string; trend?:string }) { return <div className="stat"><small>{label}</small><strong>{value}</strong>{trend&&<span>{trend}</span>}</div>; }

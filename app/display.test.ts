@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { activityDescription, activityKind, clientErrorMessage, clinicWallTimeToIso, displayEnum, operationalMessage, sourceLabel, statusTone, teamActivity, timezoneLabel } from './display.ts';
+import { activityDescription, activityKind, clientErrorMessage, clinicWallTimeToIso, defaultAfterUnblock, displayEnum, numberBlockMessage, UNBLOCK_RESULT, operationalMessage, sourceLabel, statusTone, teamActivity, timezoneLabel } from './display.ts';
 import type { ActivityEntry } from './dashboard-data';
 
 test('team activity shows staff changes across categories but never automated events', () => {
@@ -53,4 +53,31 @@ test('converts valid Pacific wall time and rejects DST edge cases', () => {
   assert.throws(() => clinicWallTimeToIso('2026-03-08T02:30', before), /does not exist/);
   assert.throws(() => clinicWallTimeToIso('2026-11-01T01:30', before), /transition hour/);
   assert.throws(() => clinicWallTimeToIso('2025-01-15T09:30', before), /future/);
+});
+
+test('blocked number message says who blocked it and when, in clinic time', () => {
+  // 17:37 UTC on Oct 6 is 10:37 AM Pacific (daylight time).
+  const at = '2026-10-06T17:37:04Z';
+  assert.equal(numberBlockMessage({ reason: 'staff selected Do Not Contact', source: 'n8n_sheet', blocked_at: at }),
+    'Blocked by staff in the Google Sheet on Oct 6, 10:37 AM PT.');
+  assert.equal(numberBlockMessage({ reason: 'explicit do-not-contact request', source: 'tool', blocked_at: at }),
+    'Blocked by the patient during a call on Oct 6, 10:37 AM PT.');
+  assert.equal(numberBlockMessage({ reason: null, source: 'webhook', blocked_at: at }),
+    'Blocked by the patient during a call on Oct 6, 10:37 AM PT.');
+  assert.equal(numberBlockMessage({ reason: null, source: null, blocked_at: at }),
+    'Blocked by the system on Oct 6, 10:37 AM PT.');
+  // A missing or broken date still gives a readable sentence.
+  assert.equal(numberBlockMessage({ reason: null, source: 'n8n_sheet', blocked_at: 'not a date' }),
+    'Blocked by staff in the Google Sheet.');
+});
+
+test('unblock suggests continuing after a short block and starting over after a week', () => {
+  const now = new Date('2026-10-20T12:00:00Z');
+  assert.equal(defaultAfterUnblock('2026-10-19T12:00:00Z', now), 'continue');
+  assert.equal(defaultAfterUnblock('2026-10-13T12:00:01Z', now), 'continue');
+  assert.equal(defaultAfterUnblock('2026-10-13T12:00:00Z', now), 'restart');
+  assert.equal(defaultAfterUnblock(null, now), 'continue');
+  assert.equal(defaultAfterUnblock('not a date', now), 'continue');
+  assert.match(UNBLOCK_RESULT.continue, /next step/);
+  assert.match(UNBLOCK_RESULT.restart, /Day 0/);
 });

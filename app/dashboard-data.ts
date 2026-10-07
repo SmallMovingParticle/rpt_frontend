@@ -29,6 +29,15 @@ export type Lead = {
   referred_by?: string;
   lead_type?: 'Physical Therapy' | 'Wellness';
   is_test?: boolean;
+  number_block?: NumberBlock | null;
+};
+
+// Set when the lead's phone is on the do-not-contact list. Calls and texts to
+// it never go out, whatever stage the lead is in.
+export type NumberBlock = {
+  reason: string | null;
+  source: string | null;
+  blocked_at: string;
 };
 
 export type CadenceStep = {

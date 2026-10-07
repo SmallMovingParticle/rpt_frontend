@@ -138,6 +138,8 @@ button:disabled { cursor: not-allowed; }
 .attention { --status: var(--amber); --wash: #fff5e9; }
 .booked { --status: var(--green); --wash: #ebf8ef; }
 .closed { --status: #64748b; --wash: #f1f3f6; }
+.status-pill.blocked { --status: var(--error-ink); --wash: #fef3f2; }
+.status-pill.blocked > i { font-style: normal; }
 .status-glyph { width: 36px; height: 36px; position: relative; display: inline-grid; place-items: center; flex: 0 0 auto; border: 2px solid var(--status); border-radius: 50%; color: var(--status); line-height: 1; }
 .status-glyph.large { width: 60px; height: 60px; }
 .status-glyph.compact { width: 13px; height: 13px; border: 0; border-radius: 0; }
@@ -162,6 +164,8 @@ button:disabled { cursor: not-allowed; }
 .location { color: var(--muted); display: inline-flex; align-items: center; gap: 6px; }
 .status-pill, .version { display: inline-flex; align-items: center; gap: 7px; padding: 5px 9px; border: 1px solid color-mix(in srgb, var(--status), white 55%); background: var(--wash); color: var(--status); border-radius: 6px; font-size: 13px; font-weight: 650; }
 .status-pill > i { font-style: normal; }
+/* Header tags stay on one line; the header has room once they stop wrapping word by word. */
+.lead-header .status-pill, .lead-header .version { white-space: nowrap; }
 .version { color: var(--indigo); border-color: #bdb2ff; background: #f5f2ff; }
 .next { width: 100%; margin-top: auto; padding-top: 13px; border-top: 1px solid var(--line); color: var(--accent-ink); font-size: 14px; }
 .next.attention-reason { color: var(--amber); }
@@ -219,6 +223,8 @@ tr.row-booked td:first-child { border-left: 3px solid var(--green); }
 .alert.warning > b { background: var(--amber); }
 .alert.success { border-color: #a9dfbd; background: #f0faf3; }
 .alert.success > b { background: var(--green); }
+.alert.danger { border-color: #f5b5ae; background: #fef3f2; }
+.alert.danger > b { background: var(--error-ink); }
 .search-field { height: var(--control-height); padding: 0 14px; min-width: 220px; }
 .search-field input { border: 0; outline: 0; width: 100%; }
 .row-link { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 6px; color: var(--accent-ink); font-size: 18px; }
@@ -537,6 +543,15 @@ tr.row-booked td:first-child { border-left: 3px solid var(--green); }
 .form-grid .consent-field { display: flex; grid-template-columns: none; align-items: center; gap: 10px; font-weight: 550; }
 .form-grid .consent-field input { width: 18px; height: 18px; padding: 0; flex: 0 0 auto; }
 .modal footer { display: flex; justify-content: flex-end; gap: 10px; margin-top: 22px; }
+.link-button { border: 0; padding: 0; background: none; color: var(--error-ink); font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
+.choice-list { display: grid; gap: 10px; margin: 0; padding: 0; border: 0; }
+.choice-list legend { margin-bottom: 10px; color: var(--ink-2); font-size: 14px; font-weight: 650; }
+.choice-list label { display: flex; gap: 12px; align-items: flex-start; padding: 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--paper); cursor: pointer; }
+.choice-list label.selected { border-color: var(--blue); background: var(--soft-blue); }
+.choice-list input { width: 18px; height: 18px; margin: 2px 0 0; flex: 0 0 auto; accent-color: var(--blue); }
+.choice-list span { display: grid; gap: 3px; }
+.choice-list strong { color: var(--ink); font-size: 15px; }
+.choice-list small { color: var(--muted); font-size: 13px; line-height: 1.45; }
 
 @media (max-width: 1180px) {
   .top-actions .global-search { display: none; }
@@ -956,6 +971,11 @@ button.assistant-logo:hover { box-shadow: 0 0 0 3px #0b50d033; }
 [data-theme="dark"] .provider-icon.keap { background: #10301f; }
 [data-theme="dark"] .alert.warning { border-color: #5a4a1e; background: #3a2a10; }
 [data-theme="dark"] .alert.success { border-color: #1f5a3a; background: #10301f; }
+[data-theme="dark"] .alert.danger { border-color: #6b2a26; background: #3a1614; }
+[data-theme="dark"] .status-pill.blocked { --status: #ff9a8f; --wash: #3a1614; }
+[data-theme="dark"] .link-button { color: #ff9a8f; }
+[data-theme="dark"] .choice-list label { background: var(--paper-2); border-color: var(--line); }
+[data-theme="dark"] .choice-list label.selected { border-color: #6c9bff; background: #16264a; }
 [data-theme="dark"] .event { background: #16264a; color: #9dbcf5; }
 [data-theme="dark"] .event.green { background: #10301f; color: #7fd4a5; }
 [data-theme="dark"] .event.purple { background: #261f4d; color: #b7a8ff; }

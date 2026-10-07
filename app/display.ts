@@ -1,4 +1,4 @@
-import type { ActivityEntry } from './dashboard-data';
+import type { ActivityEntry, NumberBlock } from './dashboard-data';
 
 export const CLINIC_TZ = 'America/Los_Angeles';
 export const CLINIC_TZ_LABEL = 'PT';
@@ -172,3 +172,37 @@ export function clinicWallTimeToIso(value: string, now = new Date()) {
   if (matches[0] <= now.valueOf()) throw new Error('Choose a future time.');
   return new Date(matches[0]).toISOString();
 }
+
+// Who put the number on the do-not-contact list, in staff words.
+function blockedBy(source: unknown) {
+  const normalized = key(source);
+  if (/^(n8n_sheet|google_sheets?|n8n)$/.test(normalized)) return 'staff in the Google Sheet';
+  if (/^(tool|webhook|vapi)$/.test(normalized)) return 'the patient during a call';
+  if (normalized === 'dashboard') return 'staff in the dashboard';
+  if (/^(twilio|sms)$/.test(normalized)) return 'the patient by text';
+  return 'the system';
+}
+
+export function numberBlockMessage(block: NumberBlock) {
+  const parsed = new Date(block.blocked_at);
+  const when = Number.isNaN(parsed.valueOf()) ? '' : ` on ${new Intl.DateTimeFormat('en-US', {
+    timeZone: CLINIC_TZ, month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
+  }).format(parsed)} ${CLINIC_TZ_LABEL}`;
+  return `Blocked by ${blockedBy(block.source)}${when}.`;
+}
+
+export type AfterUnblock = 'continue' | 'restart';
+
+// A short block was usually a mistake, so the patient picks up where they left
+// off. After a week the remaining steps ("final reminder") no longer make sense
+// on their own, so starting over is the better default.
+export function defaultAfterUnblock(blockedAt: string | null | undefined, now = new Date()): AfterUnblock {
+  const since = new Date(String(blockedAt ?? ''));
+  if (Number.isNaN(since.valueOf())) return 'continue';
+  return now.valueOf() - since.valueOf() < 7 * 24 * 60 * 60 * 1000 ? 'continue' : 'restart';
+}
+
+export const UNBLOCK_RESULT: Record<AfterUnblock, string> = {
+  continue: 'Number unblocked. Outreach continues from the next step.',
+  restart: 'Number unblocked. Outreach starts again from Day 0.',
+};
