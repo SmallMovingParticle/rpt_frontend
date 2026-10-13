@@ -38,6 +38,7 @@ test('says how a Stride booking fell through', () => {
   assert.equal(operationalMessage('Late cancel in Stride'), 'Late cancel in Stride. Call the patient to rebook.');
   assert.equal(operationalMessage('No show in Stride'), 'No show in Stride. Call the patient to rebook.');
   assert.equal(operationalMessage('Appointment removed in Stride'), 'Appointment removed in Stride. Call the patient to rebook.');
+  assert.equal(operationalMessage('Unclear change in Stride'), 'A change in Stride could not be matched to one visit. Check the appointment in Stride.');
   assert.equal(operationalMessage('Stride appointment cancelled'), 'Appointment status could not be confirmed. Review it before trying again.');
 });
 
