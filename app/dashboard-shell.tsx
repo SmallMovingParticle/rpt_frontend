@@ -957,8 +957,17 @@ function LeadOverview({ detail }: { detail: LeadDetail }) {
   // A finished lead has an outcome, not a pending action, and no schedule to open.
   const cadenceOver = stage === 'closed' || stage === 'booked';
   const pendingResult = !cadenceOver && detail.events.some((event) => event.status === 'attempted' || event.status === 'in_flight');
-  const nextAction = String(lead.next_step ?? (pendingResult ? 'Awaiting outreach result' : detail.events.length ? 'Cadence complete' : 'No cadence scheduled'));
-  const nextCopy = cadenceOver ? 'Automated outreach has ended for this lead.' : pendingResult ? 'An outreach step is waiting for confirmation.' : lead.next_event_id ? 'Continue the scheduled outreach cadence.' : 'No planned outreach event remains.';
+  // A paused lead has no planned step (pausing skips them), so it used to read
+  // "Cadence complete" while it was really stopped for review, e.g. after a failed SMS.
+  const paused = !cadenceOver && !pendingResult && lead.cadence_state === 'paused';
+  const needsReview = stage === 'attention';
+  const nextAction = paused
+    ? (needsReview ? 'Paused, needs attention' : 'Cadence paused')
+    : String(lead.next_step ?? (pendingResult ? 'Awaiting outreach result' : detail.events.length ? 'Cadence complete' : 'No cadence scheduled'));
+  const nextCopy = cadenceOver ? 'Automated outreach has ended for this lead.'
+    : pendingResult ? 'An outreach step is waiting for confirmation.'
+    : paused ? (needsReview ? 'No calls or texts go out until someone reviews this lead. Fix the issue below, then resume the cadence.' : 'No calls or texts go out until the cadence is resumed.')
+    : lead.next_event_id ? 'Continue the scheduled outreach cadence.' : 'No planned outreach event remains.';
   return <div className="stack"><Panel title="Lead information"><dl className="info-grid"><div><dt>Lead ID</dt><dd>{String(lead.display_id)}</dd></div><div><dt>Source</dt><dd>{sourceLabel(lead.source ?? lead.source_system)}</dd></div><div><dt>Owner</dt><dd>{String(lead.owner ?? 'Unassigned')}</dd></div><div><dt>Created</dt><dd>{date(String(lead.created_at ?? ''))}</dd></div>{Boolean(lead.date_of_birth) && <div><dt>Date of birth</dt><dd>{String(lead.date_of_birth)}</dd></div>}{Boolean(lead.referred_by) && <div><dt>Referred by</dt><dd>{String(lead.referred_by)}</dd></div>}{Boolean(lead.lead_type) && <div><dt>Lead type</dt><dd>{String(lead.lead_type)}</dd></div>}<div><dt>Preferred location</dt><dd>{String(lead.location ?? 'Not assigned')}</dd></div><div><dt>Time zone</dt><dd>{timezoneLabel(lead.timezone)}</dd></div></dl></Panel><Panel title={cadenceOver ? "Outcome" : "Next action"}><div className="next-action"><span className="status-icon"><PhoneIcon size={20} /></span><div><strong>{nextAction}</strong><p>{nextCopy}</p></div><Link className="secondary" href={`/leads/${lead.id}/cadence`}>View schedule</Link></div></Panel><Panel title="Notes">{stage === 'attention' && Boolean(lead.review_reason) ? <p><strong>Why this lead needs attention:</strong> {operationalMessage(lead.review_reason)}</p> : <p className="muted">No additional lead notes have been recorded.</p>}</Panel></div>;
 }
 
