@@ -33,6 +33,14 @@ test('selects semantic activity icons and status tones', () => {
   assert.equal(statusTone('booked'), 'success');
 });
 
+test('says how a Stride booking fell through', () => {
+  assert.equal(operationalMessage('Cancelled in Stride'), 'Cancelled in Stride. Call the patient to rebook.');
+  assert.equal(operationalMessage('Late cancel in Stride'), 'Late cancel in Stride. Call the patient to rebook.');
+  assert.equal(operationalMessage('No show in Stride'), 'No show in Stride. Call the patient to rebook.');
+  assert.equal(operationalMessage('Appointment removed in Stride'), 'Appointment removed in Stride. Call the patient to rebook.');
+  assert.equal(operationalMessage('Stride appointment cancelled'), 'Appointment status could not be confirmed. Review it before trying again.');
+});
+
 test('replaces technical provider failures with client-safe messages', () => {
   assert.equal(operationalMessage('dispatch failed: twilio returned HTTP 400'), 'Message was not sent. Review the phone number before trying again.');
   assert.equal(operationalMessage('call outcome was not reported'), 'Call result could not be confirmed. Review it before continuing.');

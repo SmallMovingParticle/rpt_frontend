@@ -84,9 +84,19 @@ const OPERATIONAL_DEFAULTS: Record<OperationalContext, string> = {
 const TECHNICAL_DETAIL = /\b(?:twilio|vapi|stride|stripe|keap|moonshot|kimi|n8n|supabase|postgres(?:ql)?|database|sql|http|api|webhook|worker|provider|dispatch|transport|socket|timeout|error|exception|traceback|json|status code|response code|bad request|internal server|service unavailable|gateway|fetch|network|connection|failed to|econn\w*|enotfound)\b|\b[45]\d{2}\b|https?:\/\//i;
 const UNCERTAIN_RESULT = /ambiguous|unknown|not reported|not recorded|requires? reconciliation|stale|pending result/i;
 
+const STRIDE_OUTCOMES: Record<string, string> = {
+  cancelled: 'Cancelled',
+  'late cancel': 'Late cancel',
+  'no show': 'No show',
+  'appointment removed': 'Appointment removed',
+};
+
 export function operationalMessage(value: unknown, context: OperationalContext = 'review') {
   const text = String(value ?? '').trim().toLowerCase().replace(/[_-]+/g, ' ');
   if (!text) return OPERATIONAL_DEFAULTS[context];
+  // Set by the Stride import when a booking falls through; staff need to know which way.
+  const stride = /^(cancelled|late cancel|no show|appointment removed) in stride$/.exec(text);
+  if (stride) return `${STRIDE_OUTCOMES[stride[1]]} in Stride. Call the patient to rebook.`;
   if (/moved to review from the board/.test(text)) return 'Moved to staff review.';
   if (/wrong (?:phone|number|person)|invalid phone/.test(text)) return 'The phone number needs review before outreach continues.';
   if (/replaced by sheet lead|phone number change/.test(text)) return 'Contact details changed and need staff review.';
