@@ -1,8 +1,11 @@
 'use client';
 
 import Link from 'next/link';
+import { ModalShell, SelectMenu } from './dashboard-controls';
+import { AppointmentsPage } from './appointments-page';
+import { calendarDay } from './appointment-data';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { FormEvent, ReactNode, useEffect, useId, useMemo, useRef, useState } from 'react';
+import { FormEvent, ReactNode, useEffect, useMemo, useState } from 'react';
 import { cadenceActionDescription, cadenceCallNames, cadenceStepName, cadenceRunSummary, isCadenceStep, reorderCadenceSteps, splitCadenceRuns, type CadenceEvent } from './cadence';
 import { ActivityEntry, CadenceStep, CadenceVersion, emptySnapshot, Lead, LeadCreateInput, LeadDetail, LeadStage, NumberBlock, Snapshot, StaffMember } from './dashboard-data';
 import { AssistantDock, AssistantPage, ThemeToggle, setLeadDragData } from './assistant';
@@ -67,23 +70,10 @@ function PhoneIcon({ size = 16 }: { size?: number }) {
 function MessageIcon({ size = 16 }: { size?: number }) {
   return <svg viewBox="0 0 20 20" width={size} height={size} fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.2 4.2h13.6v9.4H8l-3.7 2.2v-2.2H3.2V4.2Z" /></svg>;
 }
-function CalendarIcon({ size = 20 }: { size?: number }) {
-  return <svg viewBox="0 0 24 24" width={size} height={size} fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M3 10h18M8 3v4M16 3v4m-7 8 2 2 4-4" /></svg>;
-}
 function MobileMenuIcon({ open }: { open: boolean }) {
   return <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">{open ? <path d="m6 6 12 12M18 6 6 18" /> : <path d="M5 7h14M5 12h14M5 17h14" />}</svg>;
 }
 
-function ModalShell({ labelId, className = '', onClose, children }: { labelId: string; className?: string; onClose: () => void; children: ReactNode }) {
-  const ref = useRef<HTMLDialogElement>(null);
-  useEffect(() => {
-    const node = ref.current;
-    const opener = document.activeElement as HTMLElement | null;
-    node?.showModal();
-    return () => { node?.close(); opener?.focus(); };
-  }, []);
-  return <dialog ref={ref} className={`modal native-modal ${className}`} aria-labelledby={labelId} onCancel={(event) => { event.preventDefault(); onClose(); }} onClick={(event) => { if (event.target === ref.current) onClose(); }}>{children}</dialog>;
-}
 function MapPinIcon() {
   return <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor"
     strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -105,11 +95,6 @@ function GripIcon() {
   </svg>;
 }
 
-function ChevronIcon({ open = false }: { open?: boolean }) {
-  return <svg className={open ? 'open' : ''} viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor"
-    strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m5 7.5 5 5 5-5" /></svg>;
-}
-
 function SidebarToggleIcon({ collapsed }: { collapsed: boolean }) {
   return <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor"
     strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -117,63 +102,6 @@ function SidebarToggleIcon({ collapsed }: { collapsed: boolean }) {
     <path d="M9 4v16" />
     <path d={collapsed ? 'm13 9 3 3-3 3' : 'm16 9-3 3 3 3'} />
   </svg>;
-}
-
-type SelectOption = { value: string; label: string };
-function SelectMenu({ value, options, onChange, ariaLabel, className = '', name, icon }: {
-  value: string; options: SelectOption[]; onChange: (value: string) => void; ariaLabel: string;
-  className?: string; name?: string; icon?: ReactNode;
-}) {
-  const [open, setOpen] = useState(false);
-  const selectedIndex = Math.max(0, options.findIndex((option) => option.value === value));
-  const [activeIndex, setActiveIndex] = useState(selectedIndex);
-  const root = useRef<HTMLDivElement>(null);
-  const listId = `select-${useId().replaceAll(':', '')}`;
-
-  useEffect(() => {
-    if (!open) return;
-    const close = (event: PointerEvent) => { if (!root.current?.contains(event.target as Node)) setOpen(false); };
-    document.addEventListener('pointerdown', close);
-    return () => document.removeEventListener('pointerdown', close);
-  }, [open]);
-
-  function choose(index: number) {
-    const option = options[index];
-    if (!option) return;
-    onChange(option.value);
-    setActiveIndex(index);
-    setOpen(false);
-    root.current?.querySelector('button')?.focus();
-  }
-
-  function onKeyDown(event: React.KeyboardEvent<HTMLButtonElement>) {
-    if (event.key === 'Escape') { setOpen(false); return; }
-    if (event.key === 'Tab') { setOpen(false); return; }
-    if (open && (event.key === 'Home' || event.key === 'End')) { event.preventDefault(); setActiveIndex(event.key === 'Home' ? 0 : options.length - 1); return; }
-    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-      event.preventDefault();
-      setOpen(true);
-      setActiveIndex((current) => (current + (event.key === 'ArrowDown' ? 1 : -1) + options.length) % options.length);
-      return;
-    }
-    if (open && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); choose(activeIndex); }
-  }
-
-  return <div className={`select-menu ${className}`} ref={root}>
-    {name && <input type="hidden" name={name} value={value} />}
-    <button className="select-menu-trigger" type="button" role="combobox" aria-label={ariaLabel} aria-expanded={open} aria-haspopup="listbox"
-      aria-controls={listId} aria-activedescendant={open ? `${listId}-${activeIndex}` : undefined}
-      onKeyDown={onKeyDown} onClick={() => { setActiveIndex(selectedIndex); setOpen((current) => !current); }}>
-      {icon}<span>{options[selectedIndex]?.label ?? value}</span><ChevronIcon open={open} />
-    </button>
-    {open && <div className="select-menu-options" id={listId} role="listbox" aria-label={ariaLabel}>
-      {options.map((option, index) => <button id={`${listId}-${index}`} type="button" role="option" tabIndex={-1}
-        aria-selected={option.value === value} className={`${option.value === value ? 'selected' : ''} ${index === activeIndex ? 'active' : ''}`}
-        key={option.value} onMouseEnter={() => setActiveIndex(index)} onClick={() => choose(index)}>
-        <span>{option.label}</span>{option.value === value && <span className="select-check" aria-hidden="true">✓</span>}
-      </button>)}
-    </div>}
-  </div>;
 }
 
 function toUsE164(raw: string): string | null {
@@ -207,6 +135,7 @@ function NavIcon({ name }: { name: string }) {
     </svg>
   );
 }
+
 
 export function DashboardShell({ user, staff }: { user: StaffUser; staff: StaffMember[] }) {
   const pathname = usePathname();
@@ -274,7 +203,7 @@ export function DashboardShell({ user, staff }: { user: StaffUser; staff: StaffM
     window.setTimeout(() => setNotice(null), 3000);
   }
 
-  async function action(path: string, method: string, body?: unknown, successMessage = 'Saved successfully.') {
+  async function action(path: string, method: string, body?: unknown, successMessage = 'Saved successfully.', onError?: (message: string) => void) {
     const failureCopy = actionFailureCopy(path);
     try {
       const response = await dashboardFetch(`/api/dashboard/${path}`, {
@@ -288,7 +217,9 @@ export function DashboardShell({ user, staff }: { user: StaffUser; staff: StaffM
       setReloadKey((value) => value + 1);
       return data;
     } catch (error) {
-      showNotice(clientErrorMessage(error instanceof Error ? error.message : '', failureCopy), 'error');
+      const message = clientErrorMessage(error instanceof Error ? error.message : '', failureCopy);
+      showNotice(message, 'error');
+      onError?.(message);
       return null;
     }
   }
@@ -416,7 +347,7 @@ function renderPage(path: string, view: string | null, query: string | null, sta
   if (path === '/leads' && loading && !snapshot.leads.length) return <><PageTitle title="Lead Pipeline" subtitle="Loading the latest pipeline…" /><SkeletonBoard /></>;
   if (path === '/leads') return <LeadsPage key={`${view}-${query}-${stage}`} snapshot={snapshot} staff={staff} mode={view === 'list' ? 'list' : 'board'} initialQuery={query ?? ''} initialStage={stage && Object.hasOwn(statusMeta, stage) ? stage as LeadStage : null} router={router} onAddLead={openAddLead} action={action} />;
   if (path === '/assistant') return <AssistantPage leads={snapshot.leads} initialChatId={chatId} />;
-  if (path === '/appointments') return <AppointmentsPage snapshot={snapshot} loading={loading} />;
+  if (path === '/appointments') return <AppointmentsPage snapshot={snapshot} location={snapshot.calendar_location ?? "All Locations"} action={action} initialLeadId={null} />;
   if (path === '/review') return <ReviewPage snapshot={snapshot} action={action} onResolved={onReviewResolved} loading={loading} />;
   if (path === '/analytics') return <AnalyticsPage snapshot={snapshot} loading={loading} />;
   if (path.startsWith('/administration') && role !== 'super_admin') return <Empty title="Administrator access required" body="Team members can manage every lead, while organization-wide settings stay protected." />;
@@ -426,7 +357,7 @@ function renderPage(path: string, view: string | null, query: string | null, sta
   if (/^\/leads\/[0-9a-f-]+\/conversations\/sms$/i.test(path)) return <LeadFrame detail={leadDetail!} tab="conversations" action={action} role={role}><SmsPage detail={leadDetail!} action={action} /></LeadFrame>;
   if (/^\/leads\/[0-9a-f-]+\/conversations\/calls$/i.test(path)) return <LeadFrame detail={leadDetail!} tab="conversations" action={action} role={role}><CallsPage detail={leadDetail!} /></LeadFrame>;
   if (/^\/leads\/[0-9a-f-]+\/cadence$/i.test(path)) return <LeadFrame detail={leadDetail!} tab="cadence" action={action} role={role}><LeadCadencePage detail={leadDetail!} action={action} role={role} /></LeadFrame>;
-  if (/^\/leads\/[0-9a-f-]+\/appointments$/i.test(path)) return <LeadFrame detail={leadDetail!} tab="appointments" action={action} role={role}><LeadAppointmentsPage detail={leadDetail!} /></LeadFrame>;
+  if (/^\/leads\/[0-9a-f-]+\/appointments$/i.test(path)) return <LeadFrame detail={leadDetail!} tab="appointments" action={action} role={role}><AppointmentsPage snapshot={snapshot} location="All Locations" action={action} initialLeadId={leadDetail!.lead.id} leadId={leadDetail!.lead.id} initialDay={leadDetail!.appointments[0]?.start_utc ? calendarDay(String(leadDetail!.appointments[0].start_utc)) : undefined} /></LeadFrame>;
   if (/^\/leads\/[0-9a-f-]+\/(?:activity|history)$/i.test(path)) return <LeadFrame detail={leadDetail!} tab="activity" action={action} role={role}><LeadActivityPage detail={leadDetail!} /></LeadFrame>;
   if (/^\/leads\/[0-9a-f-]+$/i.test(path)) return <LeadFrame detail={leadDetail!} tab="overview" action={action} role={role}><LeadOverview detail={leadDetail!} /></LeadFrame>;
   return <Empty title="Page not found" body="Return to the lead pipeline to continue." />;
@@ -555,15 +486,6 @@ The remaining schedule is discarded and a new cadence begins from today. They wi
       <Panel><DataTable heads={['Lead', 'Status', 'Owner', 'Source', 'Next step', 'Last contact', '']} >{leads.map((lead) => <tr key={lead.id} className={`row-${lead.stage} ${lead.number_block ? 'row-blocked' : ''}`}><td><strong>{lead.full_name}</strong><small>{lead.display_id}</small></td><td><span className="card-tags"><StatusBadge stage={lead.stage} paused={lead.cadence_state === 'paused'} />{lead.number_block && <BlockedTag />}</span></td><td>{lead.owner ?? 'Unassigned'}</td><td>{sourceLabel(lead.source)}</td><td>{lead.next_step ?? 'No planned action'}</td><td>{relative(lead.last_contacted_at)}</td><td><Link className="row-link" href={`/leads/${lead.id}`} aria-label={`Open ${lead.full_name}`}>→</Link></td></tr>)}</DataTable></Panel>}</>;
 }
 
-function AppointmentsPage({ snapshot, loading }: { snapshot: Snapshot; loading: boolean }) {
-  const [todayOnly, setTodayOnly] = useState(false);
-  const todayAppointments = snapshot.appointments.filter((appointment) => isToday(String(appointment.start_utc ?? '')));
-  const appointments = todayOnly ? todayAppointments : snapshot.appointments;
-  return <><PageTitle title="Appointments" subtitle={`${appointments.length} ${todayOnly ? 'scheduled today' : 'scheduled records'} from the connected scheduling system.`} tools={<button className={todayOnly ? 'primary' : 'secondary'} type="button" aria-pressed={todayOnly} onClick={() => setTodayOnly((current) => !current)}>{todayOnly ? 'Show all' : 'Today'}</button>} />
-    <Alert>Availability checking will appear after the dashboard booking endpoint is enabled.</Alert>
-    <Panel title={todayOnly ? 'Today’s appointments' : 'Scheduled appointments'}>{appointments.length ? <div className="today-appointments">{appointments.map((appointment, index) => <article key={String(appointment.id ?? index)}><time>{date(String(appointment.start_utc ?? ''))}</time><div><strong>{String(appointment.full_name ?? 'Scheduled lead')}</strong><span>{String(appointment.type ?? 'Initial Evaluation')} · {String(appointment.location ?? 'Practice')}</span></div><StatusText status={String(appointment.state ?? 'Scheduled')} /></article>)}</div> : loading ? <SkeletonRows rows={3} /> : <Empty title={todayOnly ? 'No appointments today' : 'No scheduled appointments'} body="Confirmed appointment records will appear here." />}</Panel></>;
-}
-
 function ReviewPage({ snapshot, action, onResolved, loading }: { snapshot: Snapshot; action: DashboardAction; onResolved: (id: string) => void; loading: boolean }) {
   const leads = snapshot.leads.filter((lead) => lead.stage === 'attention');
   const [selectedId, setSelectedId] = useState(leads[0]?.id ?? '');
@@ -625,6 +547,45 @@ function AnalyticsPage({ snapshot, loading }: { snapshot: Snapshot; loading: boo
     <Panel title="Operational indicators"><div className="metric-grid"><Stat label="Total leads" value={String(total)} trend={`${snapshot.counts.closed} closed`} /><Stat label="SMS sent" value={num(m?.messages_sent)} trend={`${num(m?.messages_delivered)} confirmed delivered`} /><Stat label="SMS awaiting confirmation" value={num(m?.messages_pending)} trend={m?.messages_failed ? `${m.messages_failed} failed` : "none failed"} /><Stat label="Calls completed" value={num(m?.calls_completed)} trend={pct(m?.calls_completion_rate)} /><Stat label="Review rate" value={pct(m?.review_rate)} trend={`${snapshot.counts.attention} of ${total}`} /></div></Panel></>;
 }
 
+type KeapSync = {
+  overall: 'ok' | 'attention' | 'problem' | 'not_started' | 'switched_off';
+  headline: string;
+  connection: { connected: boolean; account: string | null; reconnect_needed: boolean };
+  counts: { synced: number; waiting: number; failed: number; needs_review: number; skipped: number };
+  today: { people_synced: number; contacts_created: number; contacts_updated: number };
+  problems: { reason: string; since: string }[];
+  alerts: { level: string; title: string; detail: string }[];
+};
+
+// Read-only: shows how the Keap contact sync is doing. The dashboard never sends anything to Keap.
+function KeapSyncPanel() {
+  const [status, setStatus] = useState<KeapSync | null>(null);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    const controller = new AbortController();
+    dashboardFetch('/api/dashboard/keap-sync', { signal: controller.signal })
+      .then((response) => (response.ok ? (response.json() as Promise<KeapSync>) : Promise.reject(new Error('keap status unavailable'))))
+      .then((body) => setStatus(body))
+      .catch((error) => { if (error?.name !== 'AbortError') setFailed(true); });
+    return () => controller.abort();
+  }, []);
+  if (failed) return <Panel title="Keap contacts"><p className="muted">The Keap status could not be loaded right now.</p></Panel>;
+  if (!status) return <Panel title="Keap contacts"><p className="muted">Loading Keap status…</p></Panel>;
+  const tone = status.overall === 'problem' ? 'danger' : status.overall === 'attention' ? 'warning' : status.overall === 'ok' ? 'success' : 'info';
+  return <Panel title="Keap contacts">
+    <Alert tone={tone}>{status.headline}</Alert>
+    <div className="metric-grid">
+      <Stat label="In step with Keap" value={String(status.counts.synced)} />
+      <Stat label="Waiting to send" value={String(status.counts.waiting)} />
+      <Stat label="Need a decision" value={String(status.counts.needs_review)} />
+      <Stat label="Could not be sent" value={String(status.counts.failed)} />
+    </div>
+    <p className="muted">Today: {status.today.contacts_created} contacts added, {status.today.contacts_updated} updated{status.connection.account ? ` in ${status.connection.account}` : ''}.</p>
+    {status.alerts.map((alert) => <Alert key={alert.title} tone={alert.level === 'problem' ? 'danger' : 'warning'}><strong>{alert.title}</strong> {alert.detail}</Alert>)}
+    {status.problems.length > 0 && <ul className="muted">{status.problems.map((problem, index) => <li key={`${problem.since}-${index}`}>{problem.reason}</li>)}</ul>}
+  </Panel>;
+}
+
 function AdministrationPage({ snapshot }: { snapshot: Snapshot }) {
   const cards = [
     ['/administration/cadence','CD','Global Cadence Studio','Edit the eight-step outreach sequence for future execution.'],
@@ -633,7 +594,7 @@ function AdministrationPage({ snapshot }: { snapshot: Snapshot }) {
     ['/review','RV','Review & Reconciliation','Resolve uncertain outreach results before trying again.'],
     ['/analytics','AU','Audit & Reporting','Monitor activity, delivery, and operational results.'],
   ];
-  return <><PageTitle title="Administration" subtitle="Manage organization-wide outreach settings." /><div className="admin-grid">{cards.map(([href,icon,title,body]) => <Link className="admin-card" href={href} key={href}><b>{icon}</b><div><h2>{title}</h2><p>{body}</p></div><span>→</span></Link>)}</div><Alert>Configuration changes are authenticated and recorded in the audit log. DNC rules cannot be bypassed.</Alert><div className="metric-grid"><Stat label="Cadence steps" value={String(snapshot.cadence.length)} /><Stat label="SMS templates" value={String(snapshot.templates.length)} /><Stat label="Review queue" value={String(snapshot.system.review_queue ?? 0)} /><Stat label="Pending updates" value={String(snapshot.system.provider_queue ?? 0)} /></div></>;
+  return <><PageTitle title="Administration" subtitle="Manage organization-wide outreach settings." /><div className="admin-grid">{cards.map(([href,icon,title,body]) => <Link className="admin-card" href={href} key={href}><b>{icon}</b><div><h2>{title}</h2><p>{body}</p></div><span>→</span></Link>)}</div><Alert>Configuration changes are authenticated and recorded in the audit log. DNC rules cannot be bypassed.</Alert><div className="metric-grid"><Stat label="Cadence steps" value={String(snapshot.cadence.length)} /><Stat label="SMS templates" value={String(snapshot.templates.length)} /><Stat label="Review queue" value={String(snapshot.system.review_queue ?? 0)} /><Stat label="Pending updates" value={String(snapshot.system.provider_queue ?? 0)} /></div><KeapSyncPanel /></>;
 }
 
 function GlobalCadencePage({ snapshot, action, loading }: { snapshot: Snapshot; action: DashboardAction; loading: boolean }) {
@@ -1253,10 +1214,6 @@ function RescheduleDialog({ event, leadId, action, onClose }: { event: RunEvent;
   return <ModalShell className="reschedule-dialog" labelId="reschedule-title" onClose={onClose}><header><div><h2 id="reschedule-title">Reschedule outreach step</h2><p>Choose when this step should run in Pacific Time.</p></div><button className="close-button" type="button" onClick={onClose} aria-label="Close reschedule dialog">×</button></header><form onSubmit={submit}><label className="field-label">Date and time ({CLINIC_TZ_LABEL})<input type="datetime-local" value={value} onChange={(changeEvent) => setValue(changeEvent.target.value)} required /></label>{error && <p className="field-error" role="alert">{error}</p>}<footer><button className="secondary" type="button" onClick={onClose} disabled={saving}>Cancel</button><button className="primary" type="submit" disabled={saving || !value}>{saving ? 'Saving…' : 'Save time'}</button></footer></form></ModalShell>;
 }
 
-function LeadAppointmentsPage({ detail }: { detail: LeadDetail }) {
-  const first = detail.appointments[0];
-  return <div className="two-col wide-left"><Panel title="Appointment"><div className="empty-appointment"><span><CalendarIcon size={34} /></span><h2>{detail.appointments.length ? 'Appointment scheduled':'No appointment booked'}</h2><p>{first ? `${date(String(first.start_utc ?? first.booked_at ?? ''))} · ${displayEnum(first.state ?? 'scheduled')}` : `No appointment record is available for ${String(detail.lead.full_name)}.`}</p></div><Alert>Availability checking will appear after the dashboard booking endpoint is enabled.</Alert></Panel><div className="stack"><Panel title="Appointment preferences"><dl className="detail-list"><div><dt>Preferred location</dt><dd>{String(detail.lead.location ?? 'Not assigned')}</dd></div><div><dt>Time zone</dt><dd>{timezoneLabel(detail.lead.timezone)}</dd></div><div><dt>Appointment type</dt><dd>Initial Evaluation</dd></div></dl></Panel><Panel title="Booking history">{detail.appointments.length ? <div className="today-appointments compact">{detail.appointments.map((appointment, index) => <article key={String(appointment.id ?? index)}><time>{date(String(appointment.start_utc ?? appointment.booked_at ?? ''))}</time><div><strong>{displayEnum(appointment.state ?? 'scheduled')}</strong><span>{String(appointment.location ?? detail.lead.location ?? 'Practice')}</span></div><StatusText status={String(appointment.state ?? 'scheduled')} /></article>)}</div> : <Empty title="No booking history" body="Appointment records will appear here after a booking is created." />}</Panel></div></div>;
-}
 
 function LeadActivityPage({ detail }: { detail: LeadDetail }) {
   const [query,setQuery] = useState('');
@@ -1379,12 +1336,13 @@ function exportLeadReport(snapshot: Snapshot) {
 }
 
 function filterSnapshot(snapshot: Snapshot, location: string): Snapshot {
-  if (location === 'All Locations') return snapshot;
+  if (location === 'All Locations') return { ...snapshot, calendar_location: location };
   const leads = snapshot.leads.filter((lead) => lead.location === location);
   const counts = { new: 0, cadence: 0, attention: 0, booked: 0, closed: 0 } satisfies Record<LeadStage, number>;
   leads.forEach((lead) => { counts[lead.stage] += 1; });
   return {
     ...snapshot,
+    calendar_location: location,
     leads,
     counts,
     appointments: snapshot.appointments.filter((appointment) => String(appointment.location ?? '') === location),
