@@ -101,6 +101,7 @@ export type Metrics = {
 };
 
 export type Snapshot = {
+  calendar_location?: string;
   counts: Record<LeadStage, number>;
   leads: Lead[];
   appointments: Array<Record<string, unknown>>;

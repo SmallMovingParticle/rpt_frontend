@@ -5,7 +5,7 @@ const ALLOWED_METHODS = new Set(['GET', 'POST', 'PATCH', 'PUT', 'DELETE']);
 // Every backend route the browser may reach, listed explicitly. A path missing
 // from here is rejected with "dashboard path not allowed", so this must be
 // updated whenever a new dashboard endpoint is added.
-const ALLOWED_PATH = /^(snapshot|leads(?:\/[0-9a-f-]+(?:\/(?:cadence|contact-rules|stage|sms|outreach-events\/\d+))?)?|review\/[0-9a-f-]+\/resolve|cadence-versions(?:\/\d+(?:\/(?:activate|name|permanent))?)?|cadence-steps\/\d+|message-templates(?:\/\d+)?|assistant(?:\/stream)?)$/i;
+const ALLOWED_PATH = /^(snapshot|keap-sync|appointment-calendar|appointment-slots|appointments|leads(?:\/[0-9a-f-]+(?:\/(?:cadence|contact-rules|stage|sms|outreach-events\/\d+))?)?|review\/[0-9a-f-]+\/resolve|cadence-versions(?:\/\d+(?:\/(?:activate|name|permanent))?)?|cadence-steps\/\d+|message-templates(?:\/\d+)?|assistant(?:\/stream)?)$/i;
 
 async function proxy(request: NextRequest, context: { params: Promise<{ path?: string[] }> }) {
   if (!ALLOWED_METHODS.has(request.method)) {
@@ -24,6 +24,9 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path?: s
   const relativePath = path.join('/');
   if (!ALLOWED_PATH.test(relativePath)) {
     return NextResponse.json({ detail: 'dashboard path not allowed' }, { status: 404 });
+  }
+  if (relativePath === 'keap-sync' && request.method !== 'GET') {
+    return NextResponse.json({ detail: 'method not allowed' }, { status: 405 });
   }
   if (relativePath === 'leads' && request.method !== 'POST') {
     return NextResponse.json({ detail: 'method not allowed' }, { status: 405 });
@@ -53,7 +56,7 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path?: s
     response = await fetch(`${origin}/api/v1/dashboard/${relativePath}${request.nextUrl.search}`, {
       method: request.method,
       cache: 'no-store',
-      signal: AbortSignal.timeout(relativePath.startsWith('assistant') ? 90_000 : 20_000),
+      signal: AbortSignal.timeout(relativePath.startsWith('assistant') ? 90_000 : relativePath === 'appointments' ? 35_000 : 20_000),
       headers: {
         'Content-Type': 'application/json',
         'X-Dashboard-Token': token,

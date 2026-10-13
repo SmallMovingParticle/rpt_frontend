@@ -22,6 +22,7 @@ operational analytics.
 - Simple employee ID/password sign-in with super-admin permissions
 - Review queue for uncertain provider results
 - Appointment availability and scheduling controls
+- Connected appointment calendar with five views, lead details and Stride/Google Sheets booking flow
 - Analytics, cadence templates, SMS templates, and provider-health administration
 - Responsive desktop, tablet, and mobile layouts
 
