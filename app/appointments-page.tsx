@@ -1044,7 +1044,7 @@ export function AppointmentsPage({
                                   timezone={timezone}
                                   compact={
                                     view === "Week" ||
-                                    (a.duration_minutes ?? 30) < 60
+                                    (a.duration_minutes ?? 30) < 90
                                   }
                                   onChoose={choose}
                                 />
