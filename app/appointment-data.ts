@@ -20,7 +20,110 @@ export type Appointment = {
   lead_source: string | null;
   needs_staff_review: boolean;
   stride_appointment_id: number | null;
+  tag: BookingTag;
+  booked_by: BookedBy;
+  booked_at: string | null;
+  call_log_id: number | null;
+  call_offset_seconds: number | null;
 };
+// Who a booking belongs to. Elliot: our voice agent booked it on a call. Sheet lead: one
+// of our leads, booked another way (front desk, text link, staff). Stride only: a Stride
+// patient who never was our lead (never on the board).
+export type BookingTag = "elliot" | "sheet_lead" | "stride_only";
+export type BookedBy = "voice_agent" | "staff" | "stride" | "booking_service";
+export type StatusBucket = "booked" | "completed" | "cancelled" | "no_show";
+export const BOOKING_TAGS: { value: BookingTag; label: string; hint: string }[] = [
+  { value: "elliot", label: "Elliot", hint: "booked by Elliot on a call" },
+  { value: "sheet_lead", label: "Sheet lead", hint: "our lead, booked another way" },
+  { value: "stride_only", label: "Stride only", hint: "never in our Sheet" },
+];
+export const STATUS_BUCKETS: { value: StatusBucket; label: string }[] = [
+  { value: "booked", label: "Booked" },
+  { value: "completed", label: "Completed" },
+  { value: "cancelled", label: "Cancelled / late" },
+  { value: "no_show", label: "No show" },
+];
+export function tagLabel(tag: BookingTag | null | undefined) {
+  return BOOKING_TAGS.find((t) => t.value === tag)?.label ?? "Sheet lead";
+}
+// Same buckets as the backend's appointment_views.status_bucket.
+export function statusBucket(state: string): StatusBucket | "other" {
+  if (["booking", "scheduled", "unknown"].includes(state)) return "booked";
+  if (state === "completed") return "completed";
+  if (state === "cancelled" || state === "late_cancel") return "cancelled";
+  if (state === "no_show") return "no_show";
+  return "other";
+}
+export function stateLabel(state: string) {
+  return (
+    {
+      booking: "Booking",
+      scheduled: "Booked",
+      unknown: "Booked",
+      completed: "Completed",
+      cancelled: "Cancelled",
+      late_cancel: "Late cancel",
+      no_show: "No show",
+      rescheduled: "Rescheduled",
+    }[state] ?? state.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase())
+  );
+}
+// "Booked Oct 14, 11:42 AM by Elliot on a call" and friends.
+export function bookedByLabel(by: BookedBy) {
+  return {
+    voice_agent: "by Elliot on a call",
+    staff: "by staff from the calendar",
+    stride: "in Stride (front desk or text link)",
+    booking_service: "through our booking service",
+  }[by];
+}
+export function callMoment(seconds: number | null) {
+  if (seconds === null || seconds === undefined) return "";
+  return `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, "0")}`;
+}
+export type AppointmentFilters = {
+  location?: string;
+  caseTitle?: string;
+  practitioner?: string;
+  status?: StatusBucket | "all";
+  tag?: BookingTag | "all";
+};
+export function filterAppointments(items: Appointment[], f: AppointmentFilters) {
+  return items.filter(
+    (a) =>
+      (!f.location || f.location === "All Locations" || a.location === f.location) &&
+      (!f.caseTitle || f.caseTitle === "all" || a.case_title === f.caseTitle) &&
+      (!f.practitioner || f.practitioner === "all" || a.practitioner_id === f.practitioner) &&
+      (!f.status || f.status === "all" || statusBucket(a.state) === f.status) &&
+      (!f.tag || f.tag === "all" || a.tag === f.tag),
+  );
+}
+const countBy = (items: Appointment[], key: (a: Appointment) => string) => {
+  const counts = new Map<string, number>();
+  items.forEach((a) => counts.set(key(a), (counts.get(key(a)) ?? 0) + 1));
+  return [...counts]
+    .map(([label, count]) => ({ label, count }))
+    .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
+};
+// The counts the calendar summary line and the analytics section show.
+export function appointmentSummary(items: Appointment[]) {
+  const status = { booked: 0, completed: 0, cancelled: 0, no_show: 0, other: 0 };
+  items.forEach((a) => {
+    status[statusBucket(a.state)] += 1;
+  });
+  const tags = Object.fromEntries(BOOKING_TAGS.map((t) => [t.value, 0])) as Record<BookingTag, number>;
+  items.forEach((a) => {
+    if (a.tag in tags) tags[a.tag] += 1;
+  });
+  return {
+    total: items.length,
+    status,
+    tags,
+    byLocation: countBy(items, (a) => a.location),
+    byPractitioner: countBy(items, (a) => a.practitioner_name),
+    byCase: countBy(items, (a) => a.case_title),
+  };
+}
 export type Practitioner = { id: string; name: string; location: string };
 export type CalendarData = {
   appointments: Appointment[];
@@ -99,7 +202,7 @@ export function appointmentMinutes(item: Appointment, timezone = CLINIC_TZ) {
   const wall = calendarWallTime(item.start_utc, timezone);
   return Number(wall.slice(11, 13)) * 60 + Number(wall.slice(14, 16));
 }
-export function occupiesTime(item: Appointment) {
+export function occupiesTime(item: Pick<Appointment, "state">) {
   return !/cancel|no[ _-]?show|removed|failed/i.test(item.state);
 }
 export function workingHours(

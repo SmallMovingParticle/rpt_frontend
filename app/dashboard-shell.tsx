@@ -2,12 +2,12 @@
 
 import Link from 'next/link';
 import { ModalShell, SelectMenu } from './dashboard-controls';
-import { AppointmentsPage } from './appointments-page';
-import { calendarDay } from './appointment-data';
+import { AppointmentsPage, BookingTagChip } from './appointments-page';
+import { BOOKING_TAGS, STATUS_BUCKETS, appointmentSummary, bookedByLabel, calendarDay, callMoment, filterAppointments, stateLabel, statusBucket, type Appointment, type CalendarData } from './appointment-data';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { FormEvent, ReactNode, useEffect, useMemo, useState } from 'react';
 import { cadenceActionDescription, cadenceCallNames, cadenceStepName, cadenceRunSummary, isCadenceStep, reorderCadenceSteps, splitCadenceRuns, type CadenceEvent } from './cadence';
-import { ActivityEntry, CadenceStep, CadenceVersion, emptySnapshot, Lead, LeadCreateInput, LeadDetail, LeadStage, NumberBlock, Snapshot, StaffMember } from './dashboard-data';
+import { ActivityEntry, BookingCard, CadenceStep, CadenceVersion, emptySnapshot, Lead, LeadCreateInput, LeadDetail, LeadStage, NumberBlock, Snapshot, StaffMember } from './dashboard-data';
 import { AssistantDock, AssistantPage, ThemeToggle, setLeadDragData } from './assistant';
 import { ActivityKind, clientErrorMessage, clinicDateTimeValue, clinicWallTimeToIso, CLINIC_TZ, CLINIC_TZ_LABEL, defaultAfterUnblock, displayEnum, numberBlockMessage, operationalMessage, UNBLOCK_RESULT, type AfterUnblock, sourceLabel, statusTone, teamActivity, timezoneLabel } from './display';
 import type { StaffUser } from './session';
@@ -357,7 +357,7 @@ function renderPage(path: string, view: string | null, query: string | null, sta
   if (/^\/leads\/[0-9a-f-]+\/conversations\/sms$/i.test(path)) return <LeadFrame detail={leadDetail!} tab="conversations" action={action} role={role}><SmsPage detail={leadDetail!} action={action} /></LeadFrame>;
   if (/^\/leads\/[0-9a-f-]+\/conversations\/calls$/i.test(path)) return <LeadFrame detail={leadDetail!} tab="conversations" action={action} role={role}><CallsPage detail={leadDetail!} /></LeadFrame>;
   if (/^\/leads\/[0-9a-f-]+\/cadence$/i.test(path)) return <LeadFrame detail={leadDetail!} tab="cadence" action={action} role={role}><LeadCadencePage detail={leadDetail!} action={action} role={role} /></LeadFrame>;
-  if (/^\/leads\/[0-9a-f-]+\/appointments$/i.test(path)) return <LeadFrame detail={leadDetail!} tab="appointments" action={action} role={role}><AppointmentsPage snapshot={snapshot} location="All Locations" action={action} initialLeadId={leadDetail!.lead.id} leadId={leadDetail!.lead.id} initialDay={leadDetail!.appointments[0]?.start_utc ? calendarDay(String(leadDetail!.appointments[0].start_utc)) : undefined} /></LeadFrame>;
+  if (/^\/leads\/[0-9a-f-]+\/appointments$/i.test(path)) return <LeadFrame detail={leadDetail!} tab="appointments" action={action} role={role}><AppointmentsPage snapshot={snapshot} location="All Locations" action={action} initialLeadId={leadDetail!.lead.id} leadId={leadDetail!.lead.id} initialDay={leadDetail!.booking?.start_utc ? calendarDay(leadDetail!.booking.start_utc) : leadDetail!.appointments[0]?.start_utc ? calendarDay(String(leadDetail!.appointments[0].start_utc)) : undefined} /></LeadFrame>;
   if (/^\/leads\/[0-9a-f-]+\/(?:activity|history)$/i.test(path)) return <LeadFrame detail={leadDetail!} tab="activity" action={action} role={role}><LeadActivityPage detail={leadDetail!} /></LeadFrame>;
   if (/^\/leads\/[0-9a-f-]+$/i.test(path)) return <LeadFrame detail={leadDetail!} tab="overview" action={action} role={role}><LeadOverview detail={leadDetail!} /></LeadFrame>;
   return <Empty title="Page not found" body="Return to the lead pipeline to continue." />;
@@ -370,7 +370,7 @@ function HomePage({ snapshot, loading }: { snapshot: Snapshot; loading: boolean 
     {loading && !snapshot.leads.length ? <SkeletonTiles /> : <StatusTiles counts={snapshot.counts} loading={loading} />}
     <div className="home-work"><Panel title="Today’s Work">{loading && !snapshot.leads.length ? <SkeletonRows rows={5} /> : work.length ? <><DataTable heads={['Lead', 'Status', 'Next step', 'Due', 'Action']}>{work.map((lead) => <tr key={lead.id}><td><Link href={`/leads/${lead.id}`}>{lead.full_name}</Link></td><td><StatusBadge stage={lead.stage} paused={lead.cadence_state === 'paused'} /></td><td>{lead.next_step ?? '—'}</td><td>{time(lead.next_scheduled_for)}</td><td><Link className="text-action" href={`/leads/${lead.id}`}>Open →</Link></td></tr>)}</DataTable><div className="panel-action"><Link className="primary" href={`/leads/${work[0].id}`}>Start next task</Link></div></> : <Empty title="Today’s work is clear" body="There are no active leads waiting for outreach." />}</Panel>
     </div>
-    <Panel title="Next Appointments">{loading && !snapshot.appointments.length ? <SkeletonRows rows={2} /> : snapshot.appointments.length ? <div className="appointment-strip">{snapshot.appointments.slice(0, 3).map((item, index) => <div key={String(item.id ?? index)}><strong>{time(String(item.start_utc ?? ''))}</strong><span>{String(item.full_name ?? 'Scheduled lead')}</span><small>{String(item.location ?? 'Practice')}</small></div>)}</div> : <Empty title="No upcoming appointments" body="Scheduled appointments will appear here." />}</Panel></>;
+    <Panel title="Next Appointments">{loading && !snapshot.appointments.length ? <SkeletonRows rows={2} /> : snapshot.appointments.length ? <><div className="next-appointments"><DataTable heads={['Patient', 'When', 'Visit', 'Clinician', 'Tag']}>{snapshot.appointments.slice(0, 5).map((item) => <tr key={item.id}><td>{item.lead_id ? <Link href={`/leads/${item.lead_id}`}>{item.full_name}</Link> : item.full_name}</td><td>{visitWhen(item.start_utc)}</td><td>{item.type}{item.case_title && /pelvic/i.test(item.case_title) ? ' · Pelvic' : ''}</td><td>{item.practitioner_name}</td><td><BookingTagChip tag={item.tag} /></td></tr>)}</DataTable></div><div className="panel-action"><Link className="secondary" href="/appointments">Open calendar</Link></div></> : <Empty title="No upcoming appointments" body="Visits booked by Elliot, by staff or in Stride will appear here." />}</Panel></>;
 }
 
 function Skeleton({ w = '100%', h = 14 }: { w?: string; h?: number }) {
@@ -544,7 +544,60 @@ function AnalyticsPage({ snapshot, loading }: { snapshot: Snapshot; loading: boo
   if (loading && !snapshot.leads.length) return <div aria-busy="true" aria-label="Loading analytics"><PageTitle title="Analytics" subtitle="Loading pipeline movement and outreach outcomes…" /><SkeletonTiles /><div className="two-col"><Panel title="Leads created · last 14 days"><SkeletonRows rows={4} /></Panel><Panel title="Cadence outcomes"><SkeletonRows rows={4} /></Panel></div><Panel title="Operational indicators"><SkeletonRows rows={3} /></Panel></div>;
   return <><PageTitle title="Analytics" subtitle="A concise view of pipeline movement and outreach outcomes." tools={<button className="primary" type="button" onClick={() => exportLeadReport(snapshot)}>Export report</button>} /><StatusTiles counts={snapshot.counts} />
     <div className="two-col"><Panel title="Leads created · last 14 days">{movement.max === 0 ? <Empty title="No leads yet" body="Leads created in the last fourteen days will appear here." /> : <><div className="bar-chart" role="img" aria-label={`Leads created by day. Maximum ${movement.max}.`}>{movement.points.map((point)=><span className="bar" key={point.label} style={{height:`${Math.round(point.value / movement.max * 100)}%`}}><span className="sr-only">{point.label}: {point.value}</span></span>)}</div><div className="axis"><span>{movement.points[0]?.label}</span><span>{movement.points[movement.points.length-1]?.label}</span></div></>}</Panel><Panel title="Cadence outcomes"><Metric label="Calls reaching a person" value={pct(m?.calls_reached_rate)} width={`${m?.calls_reached_rate ?? 0}%`} /><Metric label="SMS confirmed delivered" value={pct(m?.messages_delivery_rate)} width={`${m?.messages_delivery_rate ?? 0}%`} /><Metric label="Booked" value={pct(m?.booked_rate)} width={`${m?.booked_rate ?? 0}%`} /><Metric label="Needs review" value={`${snapshot.counts.attention}`} width={`${m?.review_rate ?? 0}%`} tone="amber" /></Panel></div>
-    <Panel title="Operational indicators"><div className="metric-grid"><Stat label="Total leads" value={String(total)} trend={`${snapshot.counts.closed} closed`} /><Stat label="SMS sent" value={num(m?.messages_sent)} trend={`${num(m?.messages_delivered)} confirmed delivered`} /><Stat label="SMS awaiting confirmation" value={num(m?.messages_pending)} trend={m?.messages_failed ? `${m.messages_failed} failed` : "none failed"} /><Stat label="Calls completed" value={num(m?.calls_completed)} trend={pct(m?.calls_completion_rate)} /><Stat label="Review rate" value={pct(m?.review_rate)} trend={`${snapshot.counts.attention} of ${total}`} /></div></Panel></>;
+    <Panel title="Operational indicators"><div className="metric-grid"><Stat label="Total leads" value={String(total)} trend={`${snapshot.counts.closed} closed`} /><Stat label="SMS sent" value={num(m?.messages_sent)} trend={`${num(m?.messages_delivered)} confirmed delivered`} /><Stat label="SMS awaiting confirmation" value={num(m?.messages_pending)} trend={m?.messages_failed ? `${m.messages_failed} failed` : "none failed"} /><Stat label="Calls completed" value={num(m?.calls_completed)} trend={pct(m?.calls_completion_rate)} /><Stat label="Review rate" value={pct(m?.review_rate)} trend={`${snapshot.counts.attention} of ${total}`} /></div></Panel><AppointmentAnalytics /></>;
+}
+
+// Appointments by month, location, practitioner, case and tag. Reads the same calendar
+// endpoint as the Appointments page, so both pages always count the same visits.
+function AppointmentAnalytics() {
+  const [month, setMonth] = useState(() => calendarDay().slice(0, 7));
+  const [place, setPlace] = useState('all');
+  const [caseTitle, setCaseTitle] = useState('all');
+  const [practitioner, setPractitioner] = useState('all');
+  const [result, setResult] = useState<{ month: string; data: CalendarData | null; error: string } | null>(null);
+  useEffect(() => {
+    const controller = new AbortController();
+    const [year, mon] = month.split('-').map(Number);
+    const last = new Date(Date.UTC(year, mon, 0)).getUTCDate();
+    dashboardFetch(`/api/dashboard/appointment-calendar?start=${month}-01&end=${month}-${String(last).padStart(2, '0')}`, { signal: controller.signal })
+      .then(async (response) => {
+        const body = await response.json() as CalendarData & { detail?: string };
+        if (!response.ok) throw new Error(clientErrorMessage(body.detail, 'Appointments could not be loaded.'));
+        setResult({ month, data: body, error: '' });
+      })
+      .catch((error: unknown) => { if (!controller.signal.aborted) setResult({ month, data: null, error: error instanceof Error ? error.message : 'Appointments could not be loaded.' }); });
+    return () => controller.abort();
+  }, [month]);
+  const data = result?.month === month ? result.data : null;
+  const all = data?.appointments ?? [];
+  const items = filterAppointments(all, { location: place === 'all' ? undefined : place, caseTitle, practitioner });
+  const summary = appointmentSummary(items);
+  const options = (values: string[], allLabel: string) => [{ value: 'all', label: allLabel }, ...[...new Set(values)].sort().map((v) => ({ value: v, label: v }))];
+  const practitioners = [...new Map(all.map((a) => [a.practitioner_id, a.practitioner_name])).entries()].sort((a, b) => a[1].localeCompare(b[1]));
+  const monthLabel = new Date(`${month}-01T12:00:00Z`).toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+  const bars = (rows: { label: string; count: number; tone?: string; tag?: Appointment['tag'] }[]) => {
+    const max = Math.max(1, ...rows.map((r) => r.count));
+    return <div className="appt-bars">{rows.map((r) => <div className="appt-bar" key={r.label}><span>{r.tag ? <BookingTagChip tag={r.tag} /> : null}{r.label}</span><b>{r.count}</b><i aria-hidden="true"><em className={r.tone ?? ''} style={{ width: `${Math.round(r.count / max * 100)}%` }} /></i></div>)}</div>;
+  };
+  const tagHint = (tag: Appointment['tag']) => BOOKING_TAGS.find((t) => t.value === tag)?.hint ?? '';
+  return <Panel title="Appointments">
+    <div className="appointment-filters">
+      <label className="sr-only" htmlFor="appointment-month">Month</label>
+      <input id="appointment-month" type="month" value={month} max="2100-12" onChange={(e) => { if (/^\d{4}-\d{2}$/.test(e.target.value)) setMonth(e.target.value); }} />
+      <SelectMenu ariaLabel="Filter appointment counts by location" value={place} onChange={setPlace} options={options(all.map((a) => a.location), 'All locations')} />
+      <SelectMenu ariaLabel="Filter appointment counts by case" value={caseTitle} onChange={setCaseTitle} options={options(all.map((a) => a.case_title), 'All cases')} />
+      <SelectMenu ariaLabel="Filter appointment counts by practitioner" value={practitioner} onChange={setPractitioner} options={[{ value: 'all', label: 'All practitioners' }, ...practitioners.map(([id, name]) => ({ value: id, label: name }))]} />
+    </div>
+    {result?.month === month && result.error ? <Alert tone="warning">{result.error}</Alert> : !data ? <SkeletonRows rows={3} /> : <>
+      <div className="appointment-totals" role="group" aria-label={`Appointments in ${monthLabel}`}><div className="total"><b>{summary.total}</b><small>appointments</small></div>{STATUS_BUCKETS.map((b) => <div key={b.value}><b>{summary.status[b.value]}</b><small>{b.label.toLowerCase()}</small></div>)}</div>
+      {data.truncated && <Alert tone="warning">This month has more than 2,000 appointments; the counts cover the first 2,000.</Alert>}
+      {summary.total === 0 ? <Empty title={`No appointments in ${monthLabel}`} body="Choose another month or clear the filters." /> : <div className="appointment-breakdown">
+        <section><h3>By location</h3>{bars(summary.byLocation)}</section>
+        <section><h3>By practitioner</h3>{bars(summary.byPractitioner)}</section>
+        <section><h3>By case and tag</h3>{bars([...summary.byCase, ...BOOKING_TAGS.map((t) => ({ label: tagHint(t.value), count: summary.tags[t.value], tone: t.value, tag: t.value }))])}</section>
+      </div>}
+    </>}
+  </Panel>;
 }
 
 type KeapSync = {
@@ -929,7 +982,34 @@ function LeadOverview({ detail }: { detail: LeadDetail }) {
     : pendingResult ? 'An outreach step is waiting for confirmation.'
     : paused ? (needsReview ? 'No calls or texts go out until someone reviews this lead. Fix the issue below, then resume the cadence.' : 'No calls or texts go out until the cadence is resumed.')
     : lead.next_event_id ? 'Continue the scheduled outreach cadence.' : 'No planned outreach event remains.';
-  return <div className="stack"><Panel title="Lead information"><dl className="info-grid"><div><dt>Lead ID</dt><dd>{String(lead.display_id)}</dd></div><div><dt>Source</dt><dd>{sourceLabel(lead.source ?? lead.source_system)}</dd></div><div><dt>Owner</dt><dd>{String(lead.owner ?? 'Unassigned')}</dd></div><div><dt>Created</dt><dd>{date(String(lead.created_at ?? ''))}</dd></div>{Boolean(lead.date_of_birth) && <div><dt>Date of birth</dt><dd>{String(lead.date_of_birth)}</dd></div>}{Boolean(lead.referred_by) && <div><dt>Referred by</dt><dd>{String(lead.referred_by)}</dd></div>}{Boolean(lead.lead_type) && <div><dt>Lead type</dt><dd>{String(lead.lead_type)}</dd></div>}<div><dt>Preferred location</dt><dd>{String(lead.location ?? 'Not assigned')}</dd></div><div><dt>Time zone</dt><dd>{timezoneLabel(lead.timezone)}</dd></div></dl></Panel><Panel title={cadenceOver ? "Outcome" : "Next action"}><div className="next-action"><span className="status-icon"><PhoneIcon size={20} /></span><div><strong>{nextAction}</strong><p>{nextCopy}</p></div><Link className="secondary" href={`/leads/${lead.id}/cadence`}>View schedule</Link></div></Panel><Panel title="Notes">{stage === 'attention' && Boolean(lead.review_reason) ? <p><strong>Why this lead needs attention:</strong> {operationalMessage(lead.review_reason)}</p> : <p className="muted">No additional lead notes have been recorded.</p>}</Panel></div>;
+  const booking = detail.booking ?? null;
+  // A booked lead's outcome IS its booking, so the booking card replaces the outcome box.
+  const outcomePanel = !(booking && stage === 'booked');
+  return <div className="stack">{booking && <Panel title="Appointment"><BookingCardView booking={booking} leadId={lead.id} booked={stage === 'booked'} /></Panel>}<Panel title="Lead information"><dl className="info-grid"><div><dt>Lead ID</dt><dd>{String(lead.display_id)}</dd></div><div><dt>Source</dt><dd>{sourceLabel(lead.source ?? lead.source_system)}</dd></div><div><dt>Owner</dt><dd>{String(lead.owner ?? 'Unassigned')}</dd></div><div><dt>Created</dt><dd>{date(String(lead.created_at ?? ''))}</dd></div>{Boolean(lead.date_of_birth) && <div><dt>Date of birth</dt><dd>{String(lead.date_of_birth)}</dd></div>}{Boolean(lead.referred_by) && <div><dt>Referred by</dt><dd>{String(lead.referred_by)}</dd></div>}{Boolean(lead.lead_type) && <div><dt>Lead type</dt><dd>{String(lead.lead_type)}</dd></div>}<div><dt>Preferred location</dt><dd>{String(lead.location ?? 'Not assigned')}</dd></div><div><dt>Time zone</dt><dd>{timezoneLabel(lead.timezone)}</dd></div></dl></Panel>{outcomePanel && <Panel title={cadenceOver ? "Outcome" : "Next action"}><div className="next-action"><span className="status-icon"><PhoneIcon size={20} /></span><div><strong>{nextAction}</strong><p>{nextCopy}</p></div><Link className="secondary" href={`/leads/${lead.id}/cadence`}>View schedule</Link></div></Panel>}<Panel title="Notes">{stage === 'attention' && Boolean(lead.review_reason) ? <p><strong>Why this lead needs attention:</strong> {operationalMessage(lead.review_reason)}</p> : <p className="muted">No additional lead notes have been recorded.</p>}</Panel></div>;
+}
+
+function BookingCardView({ booking, leadId, booked }: { booking: BookingCard; leadId: string; booked: boolean }) {
+  const bucket = statusBucket(booking.state);
+  const off = bucket === 'cancelled' || bucket === 'no_show';
+  const start = new Date(booking.start_utc);
+  const part = (options: Intl.DateTimeFormatOptions) => start.toLocaleDateString('en-US', { ...options, timeZone: CLINIC_TZ });
+  const clockOf = (value: string) => new Date(value).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: CLINIC_TZ });
+  const range = `${clockOf(booking.start_utc)}${booking.end_utc ? ` – ${clockOf(booking.end_utc)}` : ''} ${CLINIC_TZ_LABEL}`;
+  const minutes = booking.duration_minutes ? ` (${Math.round(booking.duration_minutes)} min)` : '';
+  const bookedWhen = booking.booked_at ? new Date(booking.booked_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: CLINIC_TZ }) : '';
+  const day = calendarDay(booking.start_utc);
+  return <div className={`booking-card ${off ? 'is-off' : ''}`}>
+    <div className="booking-date" aria-hidden="true"><small>{part({ month: 'short' }).toUpperCase()}</small><strong>{part({ day: 'numeric' })}</strong><span>{part({ weekday: 'short' })}</span></div>
+    <div>
+      <h3>{booking.type}<span className={`booking-state ${bucket}`}>{stateLabel(booking.state)}</span><BookingTagChip tag={booking.tag} /></h3>
+      <p className="booking-when">{part({ weekday: 'long', month: 'long', day: 'numeric' })} · {range}{minutes}</p>
+      {off && <p className="booking-off">{stateLabel(booking.state)} in Stride · call the patient to rebook</p>}
+      <dl className="booking-facts"><dt>Case</dt><dd>{booking.case_title}</dd><dt>Clinician</dt><dd>{booking.practitioner_name}</dd><dt>Location</dt><dd>{booking.location}</dd><dt>Booked</dt><dd>{[bookedWhen, bookedByLabel(booking.booked_by)].filter(Boolean).join(' ')}</dd></dl>
+      {booking.quote && <blockquote className="booking-quote">“{booking.quote}”<small>From the booking call{booking.call_offset_seconds !== null ? `, ${callMoment(booking.call_offset_seconds)}` : ''}</small></blockquote>}
+      <div className="booking-actions">{booking.call_log_id !== null && <Link className="secondary" href={`/leads/${leadId}/conversations/calls?call=${booking.call_log_id}`}>View call transcript</Link>}<Link className="secondary" href={`/appointments?date=${day}`}>Open in calendar</Link></div>
+      {booked && bucket === 'booked' && <p className="muted booking-note">Outreach has stopped because the lead is booked. Calls and texts resume only if staff restart the cadence.</p>}
+    </div>
+  </div>;
 }
 
 function SmsPage({ detail, action }: { detail: LeadDetail; action: DashboardAction }) {
@@ -1224,7 +1304,7 @@ function LeadActivityPage({ detail }: { detail: LeadDetail }) {
 function ConversationTabs({ id, active }: { id:string; active:'sms'|'calls' }) { return <nav className="conversation-tabs" aria-label="Conversations"><Link className={active==='sms'?'active':''} aria-current={active === 'sms' ? 'page' : undefined} href={`/leads/${id}/conversations/sms`}><MessageIcon />SMS</Link><Link className={active==='calls'?'active':''} aria-current={active === 'calls' ? 'page' : undefined} href={`/leads/${id}/conversations/calls`}><PhoneIcon />Call transcripts</Link></nav>; }
 // A flagged lead shows why it was flagged: its next step is on hold until staff
 // act, so the reason is what the card has to say.
-function LeadCard({ lead, onOpen, dragging = false, onDragStart, onDragEnd }: { lead: Lead; onOpen:()=>void; dragging?: boolean; onDragStart?: ()=>void; onDragEnd?: ()=>void }) { const meta=statusMeta[lead.stage]; return <button className={`lead-card ${dragging ? 'is-dragging' : ''} ${lead.number_block ? 'is-blocked' : ''}`} type="button" draggable onDragStart={(event) => { setLeadDragData(event, lead.id); onDragStart?.(); }} onDragEnd={onDragEnd} onClick={onOpen}><strong>{lead.full_name}</strong><span className="location"><MapPinIcon />{lead.location ?? 'Not assigned'}</span><span className="card-tags"><StatusBadge stage={lead.stage} paused={lead.cadence_state === 'paused'} />{lead.number_block && <BlockedTag />}</span>{lead.stage==='cadence'&&lead.cadence_state!=='paused'&&<span className="version">{lead.cadence_version_name ?? 'Cadence'} · {lead.cadence_progress ?? 0} of {lead.cadence_total ?? 0}</span>}{lead.stage === 'attention' && lead.review_reason ? <span className="next attention-reason">Reason: {operationalMessage(lead.review_reason)}</span> : <span className="next">{lead.stage === 'closed' || lead.stage === 'booked' ? 'Outcome' : 'Next'}: {lead.next_step ?? 'No planned action'}</span>}<span className="sr-only">{meta.label}</span></button>; }
+function LeadCard({ lead, onOpen, dragging = false, onDragStart, onDragEnd }: { lead: Lead; onOpen:()=>void; dragging?: boolean; onDragStart?: ()=>void; onDragEnd?: ()=>void }) { const meta=statusMeta[lead.stage]; return <button className={`lead-card ${dragging ? 'is-dragging' : ''} ${lead.number_block ? 'is-blocked' : ''}`} type="button" draggable onDragStart={(event) => { setLeadDragData(event, lead.id); onDragStart?.(); }} onDragEnd={onDragEnd} onClick={onOpen}><strong>{lead.full_name}</strong><span className="location"><MapPinIcon />{lead.location ?? 'Not assigned'}</span><span className="card-tags"><StatusBadge stage={lead.stage} paused={lead.cadence_state === 'paused'} />{lead.number_block && <BlockedTag />}</span>{lead.stage==='cadence'&&lead.cadence_state!=='paused'&&<span className="version">{lead.cadence_version_name ?? 'Cadence'} · {lead.cadence_progress ?? 0} of {lead.cadence_total ?? 0}</span>}{lead.stage === 'attention' && lead.review_reason ? <span className="next attention-reason">Reason: {operationalMessage(lead.review_reason)}</span> : lead.stage === 'booked' && lead.booking ? <span className="next booked-on">{statusBucket(lead.booking.state) === 'booked' ? 'Booked' : stateLabel(lead.booking.state)}: {visitWhen(lead.booking.start_utc, true)}<BookingTagChip tag={lead.booking.tag} /></span> : <span className="next">{lead.stage === 'closed' || lead.stage === 'booked' ? 'Outcome' : 'Next'}: {lead.next_step ?? 'No planned action'}</span>}<span className="sr-only">{meta.label}</span></button>; }
 function StatusTiles({ counts, loading = false }: { counts: Record<LeadStage,number>; loading?: boolean }) { return <section className="status-tiles" aria-busy={loading}>{(['new','cadence','attention','booked','closed'] as LeadStage[]).map((stage)=><Link className={stage} href={`/leads?stage=${stage}`} key={stage}><StatusGlyph stage={stage} size="large" /><div><small>{statusMeta[stage].label}</small><strong>{loading ? "—" : counts[stage]}</strong></div></Link>)}</section>; }
 // Blocked leads stay in Closed (nothing for staff to fix), but read as blocked
 // at a glance rather than as one more closed lead.
@@ -1320,6 +1400,8 @@ function clinicDateKey(value:Date|string){const parsed=typeof value==='string'?n
 function stamp(value:string|null|undefined){return !value?'—':isToday(value)?time(value):date(value);}
 function isToday(value:string){const key=clinicDateKey(value);return key!==''&&key===clinicDateKey(new Date());}
 
+// "Tue 27 · 9:00 AM PT": the day matters for visits, unlike outreach steps due today.
+function visitWhen(value:string,withMonth=false){const parsed=new Date(value);if(Number.isNaN(parsed.valueOf()))return'—';const part=(o:Intl.DateTimeFormatOptions)=>parsed.toLocaleDateString('en-US',{...o,timeZone:CLINIC_TZ});const day=withMonth?`${part({month:'short'})} ${part({day:'numeric'})}`:`${part({weekday:'short'})} ${part({day:'numeric'})}`;return `${day} · ${parsed.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',timeZone:CLINIC_TZ})} ${CLINIC_TZ_LABEL}`;}
 function relative(value:string|null|undefined){return value?date(value):'Not contacted';}
 function duration(seconds:number){return `${Math.floor(seconds/60)}:${String(seconds%60).padStart(2,'0')}`;}
 

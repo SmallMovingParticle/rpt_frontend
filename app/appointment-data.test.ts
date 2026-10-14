@@ -7,6 +7,13 @@ import {
   moveCalendarDate,
   occupiesTime,
   layoutAppointments,
+  appointmentSummary,
+  bookedByLabel,
+  callMoment,
+  filterAppointments,
+  stateLabel,
+  statusBucket,
+  tagLabel,
   workingHours,
   type Appointment,
 } from "./appointment-data.ts";
@@ -59,4 +66,62 @@ test("overlapping imported appointments get lanes and adjacent bookings regain f
       ["c", 0, 1],
     ],
   );
+});
+
+const booking = (over: Partial<Appointment>) =>
+  ({
+    id: Math.random().toString(),
+    start_utc: "2026-10-27T16:00:00Z",
+    end_utc: null,
+    duration_minutes: 60,
+    state: "scheduled",
+    location: "Laguna Niguel",
+    case_title: "Physical Therapy",
+    practitioner_id: "5980",
+    practitioner_name: "Joe Smith",
+    tag: "elliot",
+    ...over,
+  }) as Appointment;
+
+test("Stride states fall into the four buckets staff count", () => {
+  assert.equal(statusBucket("scheduled"), "booked");
+  assert.equal(statusBucket("unknown"), "booked");
+  assert.equal(statusBucket("completed"), "completed");
+  assert.equal(statusBucket("late_cancel"), "cancelled");
+  assert.equal(statusBucket("cancelled"), "cancelled");
+  assert.equal(statusBucket("no_show"), "no_show");
+  assert.equal(statusBucket("rescheduled"), "other");
+  assert.equal(stateLabel("scheduled"), "Booked");
+  assert.equal(stateLabel("late_cancel"), "Late cancel");
+  assert.equal(stateLabel("checked out"), "Checked out");
+});
+test("tags, who booked and the call moment read in plain words", () => {
+  assert.equal(tagLabel("elliot"), "Elliot");
+  assert.equal(tagLabel("stride_only"), "Stride only");
+  assert.equal(bookedByLabel("voice_agent"), "by Elliot on a call");
+  assert.equal(bookedByLabel("stride"), "in Stride (front desk or text link)");
+  assert.equal(callMoment(84), "1:24");
+  assert.equal(callMoment(5), "0:05");
+  assert.equal(callMoment(null), "");
+});
+test("filters combine and the summary counts what the filters show", () => {
+  const items = [
+    booking({ tag: "elliot" }),
+    booking({ tag: "elliot", state: "late_cancel" }),
+    booking({ tag: "sheet_lead", location: "Dana Point", practitioner_id: "5981", practitioner_name: "Thao Nguyen" }),
+    booking({ tag: "stride_only", state: "completed", case_title: "Physical Therapy - Pelvic" }),
+    booking({ tag: "stride_only", state: "no_show" }),
+  ];
+  assert.equal(filterAppointments(items, { tag: "elliot" }).length, 2);
+  assert.equal(filterAppointments(items, { status: "cancelled" }).length, 1);
+  assert.equal(filterAppointments(items, { location: "Laguna Niguel", tag: "stride_only" }).length, 2);
+  assert.equal(filterAppointments(items, { location: "All Locations", status: "all", tag: "all" }).length, 5);
+  assert.equal(filterAppointments(items, { practitioner: "5981" }).length, 1);
+  const summary = appointmentSummary(items);
+  assert.equal(summary.total, 5);
+  assert.deepEqual(summary.status, { booked: 2, completed: 1, cancelled: 1, no_show: 1, other: 0 });
+  assert.deepEqual(summary.tags, { elliot: 2, sheet_lead: 1, stride_only: 2 });
+  assert.deepEqual(summary.byLocation[0], { label: "Laguna Niguel", count: 4 });
+  assert.deepEqual(summary.byPractitioner.map((r) => r.label), ["Joe Smith", "Thao Nguyen"]);
+  assert.equal(summary.byCase.length, 2);
 });

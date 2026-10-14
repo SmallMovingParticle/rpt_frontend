@@ -1,3 +1,5 @@
+import type { Appointment, BookingTag } from './appointment-data';
+
 export type LeadStage = 'new' | 'cadence' | 'attention' | 'booked' | 'closed';
 
 export type Lead = {
@@ -30,7 +32,21 @@ export type Lead = {
   lead_type?: 'Physical Therapy' | 'Wellness';
   is_test?: boolean;
   number_block?: NumberBlock | null;
+  // Only for booked leads: when and how they were booked (board card).
+  booking?: BoardBooking | null;
 };
+
+export type BoardBooking = {
+  start_utc: string;
+  state: string;
+  tag: BookingTag;
+  type: string;
+  practitioner_name: string;
+};
+
+// The lead page booking card: the next visit still on the books, else the latest one.
+// quote = what the patient said just before Elliot confirmed (Elliot bookings only).
+export type BookingCard = Appointment & { quote: string | null };
 
 // Set when the lead's phone is on the do-not-contact list. Calls and texts to
 // it never go out, whatever stage the lead is in.
@@ -104,7 +120,8 @@ export type Snapshot = {
   calendar_location?: string;
   counts: Record<LeadStage, number>;
   leads: Lead[];
-  appointments: Array<Record<string, unknown>>;
+  // Next visits still on the books, ours and Stride's, soonest first.
+  appointments: Appointment[];
   cadence: Array<Record<string, unknown>>;
   templates: Array<Record<string, unknown>>;
   providers: Array<Record<string, unknown>>;
@@ -119,6 +136,7 @@ export type LeadDetail = {
   messages: Array<Record<string, unknown>>;
   calls: Array<Record<string, unknown>>;
   appointments: Array<Record<string, unknown>>;
+  booking?: BookingCard | null;
   history: Array<Record<string, unknown>>;
   activity: ActivityEntry[];
   cadence_actions?: Array<Record<string, unknown>>;

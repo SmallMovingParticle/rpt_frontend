@@ -7,7 +7,6 @@ import { ModalShell, SelectMenu } from "./dashboard-controls";
 import { dashboardFetch } from "./dashboard-client";
 import {
   sourceLabel,
-  displayEnum,
   clientErrorMessage,
   CLINIC_TZ,
   timezoneLabel,
@@ -26,6 +25,16 @@ import {
   moveCalendarDate,
   occupiesTime,
   workingHours,
+  BOOKING_TAGS,
+  STATUS_BUCKETS,
+  appointmentSummary,
+  bookedByLabel,
+  callMoment,
+  filterAppointments,
+  stateLabel,
+  tagLabel,
+  type BookingTag,
+  type StatusBucket,
 } from "./appointment-data";
 
 type Action = (
@@ -160,10 +169,26 @@ function State({ item }: { item: Appointment }) {
     <span
       className={`appointment-state ${occupiesTime(item) ? "active" : "inactive"} ${item.needs_staff_review || item.state === "unknown" ? "review" : ""}`}
     >
-      {item.needs_staff_review ? "Needs review" : displayEnum(item.state)}
+      {item.needs_staff_review ? "Needs review" : stateLabel(item.state)}
     </span>
   );
 }
+export function BookingTagChip({ tag }: { tag: BookingTag }) {
+  return <span className={`booking-tag ${tag}`}>{tagLabel(tag)}</span>;
+}
+const bookedOn = (iso: string | null, timezone: string) =>
+  iso
+    ? new Date(iso).toLocaleString("en-US", {
+        month: "short",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+        timeZone: timezone,
+      })
+    : "";
+// A visit that is off the books says so on the block itself, not only in the details.
+const statusNote = (item: Appointment) =>
+  occupiesTime(item) && item.state !== "completed" ? "" : `${stateLabel(item.state)} · `;
 function BookingBlock({
   item,
   selected,
@@ -182,13 +207,19 @@ function BookingBlock({
       type="button"
       className={`schedule-booking ${tone(item.case_title)} ${selected ? "selected" : ""} ${compact ? "compact" : ""} ${occupiesTime(item) ? "" : "inactive"}`}
       aria-pressed={selected}
-      aria-label={`${item.full_name}, ${item.case_title}, ${timeRange(item, timezone)}, ${displayEnum(item.state)}`}
-      title={`${item.full_name} · ${timeRange(item, timezone)} · ${item.practitioner_name} · ${displayEnum(item.state)}`}
+      aria-label={`${item.full_name}, ${item.case_title}, ${timeRange(item, timezone)}, ${stateLabel(item.state)}, ${tagLabel(item.tag)}`}
+      title={`${item.full_name} · ${timeRange(item, timezone)} · ${item.practitioner_name} · ${stateLabel(item.state)} · ${tagLabel(item.tag)}`}
       onClick={() => onChoose(item)}
     >
       <strong>{item.full_name}</strong>
       <span>{timeRange(item, timezone)}</span>
-      {!compact && <small>{item.case_title}</small>}
+      {!compact && (
+        <small>
+          {statusNote(item)}
+          {item.case_title}
+        </small>
+      )}
+      <BookingTagChip tag={item.tag} />
     </button>
   );
 }
@@ -214,6 +245,10 @@ export function AppointmentsPage({
   const [mode, setMode] = useState("Calendar");
   const [caseTitle, setCaseTitle] = useState("all");
   const [practitioner, setPractitioner] = useState("all");
+  // The calendar's own location filter starts from the top-bar location and can differ.
+  const [calendarLocation, setCalendarLocation] = useState("");
+  const [status, setStatus] = useState<StatusBucket | "all">("all");
+  const [tag, setTag] = useState<BookingTag | "all">("all");
   const [selectedId, setSelectedId] = useState("");
   const [detailsOpen, setDetailsOpen] = useState(true);
   const [loaded, setLoaded] = useState<{
@@ -291,9 +326,10 @@ export function AppointmentsPage({
     };
   }, [key, reload]);
 
-  const appointments = (data?.appointments ?? []).filter(
-    (a) => location === "All Locations" || a.location === location,
-  );
+  const place = calendarLocation || location;
+  const appointments = filterAppointments(data?.appointments ?? [], {
+    location: place,
+  });
   const timing = new Map(
     appointments.map((a) => {
       const wall = calendarWallTime(a.start_utc, timezone);
@@ -309,22 +345,37 @@ export function AppointmentsPage({
   const dayOf = (a: Appointment) => timing.get(a.id)!.day;
   const minutesOf = (a: Appointment) => timing.get(a.id)!.minutes;
   const resources = (data?.practitioners ?? []).filter(
-    (p) => location === "All Locations" || p.location === location,
+    (p) => place === "All Locations" || p.location === place,
   );
+  const locationOptions = [
+    ...new Set([
+      ...(data?.practitioners ?? []).map((p) => p.location),
+      ...(data?.appointments ?? []).map((a) => a.location),
+      ...(location !== "All Locations" ? [location] : []),
+    ]),
+  ].sort();
   const practitioners = resources.filter(
     (p) => practitioner === "all" || p.id === practitioner,
   );
   const cases = [...new Set(appointments.map((a) => a.case_title))].sort();
-  const matching = appointments.filter(
-    (a) =>
-      (caseTitle === "all" || a.case_title === caseTitle) &&
-      (practitioner === "all" || a.practitioner_id === practitioner),
-  );
+  const matching = filterAppointments(appointments, {
+    caseTitle,
+    practitioner,
+    status,
+    tag,
+  });
   const periodDays =
     view === "Month"
       ? days.filter((d) => d.slice(0, 7) === day.slice(0, 7))
       : days;
   const visible = matching.filter((a) => periodDays.includes(dayOf(a)));
+  const summary = appointmentSummary(visible);
+  const filtered =
+    caseTitle !== "all" ||
+    practitioner !== "all" ||
+    status !== "all" ||
+    tag !== "all" ||
+    Boolean(calendarLocation && calendarLocation !== location);
   const selected = visible.find((a) => a.id === selectedId) ?? visible[0];
   const practitionerIds = [...new Set(practitioners.map((p) => p.id))];
   const capacity = data
@@ -519,6 +570,20 @@ export function AppointmentsPage({
           </div>
         </div>
         <div className="schedule-filters">
+          {!leadId && (
+            <label>
+              Location
+              <SelectMenu
+                ariaLabel="Filter appointments by location"
+                value={place}
+                onChange={setCalendarLocation}
+                options={[
+                  { value: "All Locations", label: "All locations" },
+                  ...locationOptions.map((l) => ({ value: l, label: l })),
+                ]}
+              />
+            </label>
+          )}
           <label>
             Case
             <SelectMenu
@@ -546,13 +611,42 @@ export function AppointmentsPage({
               ]}
             />
           </label>
-          {(caseTitle !== "all" || practitioner !== "all") && (
+          <label>
+            Status
+            <SelectMenu
+              ariaLabel="Filter appointments by status"
+              value={status}
+              onChange={(v) => setStatus(v as StatusBucket | "all")}
+              options={[
+                { value: "all", label: "All statuses" },
+                ...STATUS_BUCKETS.map((b) => ({ value: b.value, label: b.label })),
+              ]}
+            />
+          </label>
+          {!leadId && (
+            <label>
+              Booked by
+              <SelectMenu
+                ariaLabel="Filter appointments by who booked them"
+                value={tag}
+                onChange={(v) => setTag(v as BookingTag | "all")}
+                options={[
+                  { value: "all", label: "Everyone" },
+                  ...BOOKING_TAGS.map((t) => ({ value: t.value, label: t.label })),
+                ]}
+              />
+            </label>
+          )}
+          {filtered && (
             <button
               className="link-button"
               type="button"
               onClick={() => {
                 setCaseTitle("all");
                 setPractitioner("all");
+                setStatus("all");
+                setTag("all");
+                setCalendarLocation("");
               }}
             >
               Reset filters
@@ -587,8 +681,6 @@ export function AppointmentsPage({
           <div className="schedule-main">
             <div className="schedule-occupancy">
               <span>
-                {visible.length}{" "}
-                {visible.length === 1 ? "appointment" : "appointments"} <i>·</i>{" "}
                 {leadId ? (
                   "Showing only this lead’s appointments"
                 ) : (
@@ -611,6 +703,33 @@ export function AppointmentsPage({
                 </span>
               )}
             </div>
+            {data && (
+              <div
+                className="calendar-summary"
+                role="status"
+                aria-label="Appointments the filters show"
+              >
+                <span className="lead-count">
+                  <b>{summary.total}</b>{" "}
+                  {summary.total === 1 ? "appointment" : "appointments"}
+                </span>
+                {STATUS_BUCKETS.map((b) => (
+                  <span key={b.value}>
+                    <b>{summary.status[b.value]}</b> {b.label.toLowerCase()}
+                  </span>
+                ))}
+                {!leadId && (
+                  <span className="by-tag">
+                    By tag:
+                    {BOOKING_TAGS.map((t) => (
+                      <span key={t.value}>
+                        <BookingTagChip tag={t.value} /> <b>{summary.tags[t.value]}</b>
+                      </span>
+                    ))}
+                  </span>
+                )}
+              </div>
+            )}
             {loading && !data ? (
               <div className="calendar-empty" role="status">
                 <CalendarSymbol />
@@ -633,7 +752,7 @@ export function AppointmentsPage({
                         "Practitioner",
                         "Location",
                         "Status",
-                        "Lead source",
+                        "Booked by",
                       ].map((h) => (
                         <th key={h}>{h}</th>
                       ))}
@@ -668,9 +787,7 @@ export function AppointmentsPage({
                           <State item={a} />
                         </td>
                         <td>
-                          {a.lead_source
-                            ? sourceLabel(a.lead_source)
-                            : "No linked lead"}
+                          <BookingTagChip tag={a.tag} />
                         </td>
                       </tr>
                     ))}
@@ -717,10 +834,11 @@ export function AppointmentsPage({
                             type="button"
                             className={`month-booking ${tone(a.case_title)}`}
                             onClick={() => drill(a)}
-                            title={`${a.full_name} · ${timeRange(a, timezone)}`}
+                            title={`${a.full_name} · ${timeRange(a, timezone)} · ${stateLabel(a.state)} · ${tagLabel(a.tag)}`}
                           >
                             <time>{clock(a.start_utc, timezone)}</time>
                             <span>{a.full_name}</span>
+                            <BookingTagChip tag={a.tag} />
                           </button>
                         ))}
                         {records.length > 3 && (
@@ -960,7 +1078,10 @@ export function AppointmentsPage({
               </header>
               <div className="appointment-details-body">
                 <h2>{selected.full_name}</h2>
-                <State item={selected} />
+                <div className="appointment-detail-tags">
+                  <State item={selected} />
+                  <BookingTagChip tag={selected.tag} />
+                </div>
                 <div className="appointment-detail-group">
                   <p>
                     <CalendarSymbol />
@@ -983,13 +1104,14 @@ export function AppointmentsPage({
                 </div>
                 <div className="appointment-detail-group">
                   {[
-                    ["person", selected.practitioner_name, "Practitioner"],
-                    ["pin", selected.location, "Location"],
+                    ["calendar", selected.type, "Visit"],
                     ["case", selected.case_title, "Case"],
+                    ["person", selected.practitioner_name, "Clinician"],
+                    ["pin", selected.location, "Location"],
                   ].map(([kind, text, label]) => (
                     <p key={kind}>
                       <CalendarSymbol
-                        kind={kind as "person" | "pin" | "case"}
+                        kind={kind as "calendar" | "person" | "pin" | "case"}
                       />
                       <span>
                         {text}
@@ -1000,10 +1122,12 @@ export function AppointmentsPage({
                 </div>
                 <div className="appointment-detail-group">
                   <p>
-                    <CalendarSymbol kind="link" />
+                    <CalendarSymbol kind="clock" />
                     <span>
-                      {selected.source}
-                      <small>Appointment source</small>
+                      {[bookedOn(selected.booked_at, timezone), bookedByLabel(selected.booked_by)]
+                        .filter(Boolean)
+                        .join(" ")}
+                      <small>Booked</small>
                     </span>
                   </p>
                   <p>
@@ -1011,26 +1135,38 @@ export function AppointmentsPage({
                     <span>
                       {selected.lead_source
                         ? sourceLabel(selected.lead_source)
-                        : "No linked lead"}
+                        : "Not one of our Sheet leads"}
                       <small>Lead source</small>
                     </span>
                   </p>
                 </div>
+                {selected.lead_id && selected.call_log_id !== null && (
+                  <Link
+                    className="secondary full calendar-case-link"
+                    href={`/leads/${selected.lead_id}/conversations/calls?call=${selected.call_log_id}`}
+                  >
+                    View call transcript
+                    {selected.call_offset_seconds !== null
+                      ? ` · booked at ${callMoment(selected.call_offset_seconds)}`
+                      : ""}
+                  </Link>
+                )}
                 {selected.lead_id ? (
                   <Link
                     className="secondary full calendar-case-link"
-                    href={`/leads/${selected.lead_id}/appointments?date=${calendarDay(selected.start_utc, timezone)}`}
+                    href={`/leads/${selected.lead_id}`}
                   >
-                    View case <span aria-hidden="true">↗</span>
+                    Open lead <span aria-hidden="true">↗</span>
                   </Link>
                 ) : (
                   <p className="appointment-note">
-                    This Stride patient has no linked outreach lead.
+                    Not one of our Sheet leads. Stride-only patients never
+                    appear on the lead board.
                   </p>
                 )}
                 <p className="appointment-note">
-                  Reschedule or cancel in Stride. The next import updates this
-                  calendar.
+                  Stride is the record: reschedule or cancel there. The next
+                  import updates this calendar.
                 </p>
               </div>
             </aside>
@@ -1059,6 +1195,8 @@ export function AppointmentsPage({
             if (id) setSelectedId(id);
             setCaseTitle("all");
             setPractitioner("all");
+            setStatus("all");
+            setTag("all");
             setDetailsOpen(true);
             setReload((n) => n + 1);
             setDraft(null);
