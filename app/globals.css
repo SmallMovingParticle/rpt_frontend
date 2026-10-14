@@ -868,6 +868,11 @@ tr.row-booked td:first-child { border-left: 3px solid var(--green); }
 .status-tiles > a { box-shadow: 0 1px 2px #0f172a0a; transition: box-shadow .15s, transform .15s; }
 .status-tiles > a:hover { box-shadow: 0 6px 18px #0f172a14; transform: translateY(-1px); }
 
+.calendar-skeleton-heading { justify-items: center; }
+.calendar-skeleton-block { position: absolute; left: 4px; right: 4px; height: 52px; border-radius: 4px; }
+.calendar-skeleton-list > div { display: grid; grid-template-columns: 1fr 1.3fr 1.2fr 1fr 1fr .8fr; gap: 20px; align-items: center; padding: 20px 14px; border-top: 1px solid var(--calendar-line); }
+.calendar-skeleton-month { display: grid; grid-template-columns: repeat(7, minmax(0,1fr)); }
+.calendar-skeleton-month > div { display: flex; flex-direction: column; gap: 10px; min-height: 96px; padding: 10px; border-right: 1px solid var(--calendar-line); border-bottom: 1px solid var(--calendar-line); }
 .skeleton-rows { display: flex; flex-direction: column; gap: 4px; }
 .skeleton-row { display: grid; grid-template-columns: 104px 1fr 88px; gap: 16px; align-items: center; padding: 18px 4px; border-bottom: 1px solid var(--line); }
 .skeleton-row:last-child { border-bottom: 0; }

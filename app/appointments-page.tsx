@@ -188,7 +188,107 @@ const bookedOn = (iso: string | null, timezone: string) =>
     : "";
 // A visit that is off the books says so on the block itself, not only in the details.
 const statusNote = (item: Appointment) =>
-  occupiesTime(item) && item.state !== "completed" ? "" : `${stateLabel(item.state)} · `;
+  occupiesTime(item) && item.state !== "completed"
+    ? ""
+    : `${stateLabel(item.state)} · `;
+function Skeleton({ w = "100%", h = 14 }: { w?: string; h?: number }) {
+  return (
+    <span
+      className="skeleton"
+      style={{ width: w, height: h }}
+      aria-hidden="true"
+    />
+  );
+}
+
+// Same shape as the real calendar, so nothing jumps when the data lands.
+function CalendarSkeleton({
+  mode,
+  view,
+}: {
+  mode: string;
+  view: CalendarView;
+}) {
+  if (mode === "List")
+    return (
+      <div className="calendar-skeleton-list" aria-busy="true">
+        {Array.from({ length: 6 }).map((_, i) => (
+          <div key={i}>
+            <Skeleton w="70%" />
+            <Skeleton w="80%" />
+            <Skeleton w="60%" />
+            <Skeleton w="65%" />
+            <Skeleton w="55%" />
+            <Skeleton w="50%" h={20} />
+          </div>
+        ))}
+      </div>
+    );
+  if (view === "Month")
+    return (
+      <div className="calendar-skeleton-month" aria-busy="true">
+        {Array.from({ length: 35 }).map((_, i) => (
+          <div key={i}>
+            <Skeleton w="22px" h={12} />
+            {i % 4 === 1 && <Skeleton w="85%" h={16} />}
+          </div>
+        ))}
+      </div>
+    );
+  const columns = view === "Week" ? 7 : 3;
+  const hours = 8;
+  return (
+    <div className="schedule-grid-scroll" aria-busy="true">
+      <div
+        className={`schedule-grid ${view === "Week" ? "week-grid" : ""}`}
+        style={
+          {
+            "--columns": columns,
+            "--hour-height": `${HOUR_HEIGHT}px`,
+          } as CSSProperties
+        }
+      >
+        <div className="schedule-grid-header">
+          <div />
+          <div className="schedule-column-headings">
+            {Array.from({ length: columns }).map((_, c) => (
+              <div key={c} className="calendar-skeleton-heading">
+                <Skeleton w="45%" h={15} />
+                <Skeleton w="70%" h={11} />
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="schedule-grid-body">
+          <div className="schedule-hour-labels">
+            {Array.from({ length: hours }).map((_, h) => (
+              <time key={h}>
+                <Skeleton w="34px" h={11} />
+              </time>
+            ))}
+          </div>
+          <div className="schedule-columns">
+            {Array.from({ length: columns }).map((_, c) => (
+              <div className="schedule-column" key={c}>
+                {Array.from({ length: hours }).map((_, h) => (
+                  <div className="schedule-hour-cell" key={h} />
+                ))}
+                {[(c * 3 + 1) % hours, (c * 5 + 4) % hours].map((h, i) => (
+                  <span
+                    key={i}
+                    className="skeleton calendar-skeleton-block"
+                    style={{ top: h * HOUR_HEIGHT + 4 }}
+                  />
+                ))}
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function BookingBlock({
   item,
   selected,
@@ -619,7 +719,10 @@ export function AppointmentsPage({
               onChange={(v) => setStatus(v as StatusBucket | "all")}
               options={[
                 { value: "all", label: "All statuses" },
-                ...STATUS_BUCKETS.map((b) => ({ value: b.value, label: b.label })),
+                ...STATUS_BUCKETS.map((b) => ({
+                  value: b.value,
+                  label: b.label,
+                })),
               ]}
             />
           </label>
@@ -632,7 +735,10 @@ export function AppointmentsPage({
                 onChange={(v) => setTag(v as BookingTag | "all")}
                 options={[
                   { value: "all", label: "Everyone" },
-                  ...BOOKING_TAGS.map((t) => ({ value: t.value, label: t.label })),
+                  ...BOOKING_TAGS.map((t) => ({
+                    value: t.value,
+                    label: t.label,
+                  })),
                 ]}
               />
             </label>
@@ -679,30 +785,48 @@ export function AppointmentsPage({
           className={`schedule-layout ${selected && detailsOpen ? "with-details" : ""}`}
         >
           <div className="schedule-main">
-            <div className="schedule-occupancy">
-              <span>
-                {leadId ? (
-                  "Showing only this lead’s appointments"
-                ) : (
-                  <>
-                    {hoursLabel(occupied)} / {hoursLabel(capacity)} hours booked
-                  </>
-                )}
-              </span>
-              {!leadId && (
-                <meter
-                  min="0"
-                  max={capacity || 1}
-                  value={Math.min(occupied, capacity)}
-                  aria-label="Booked hours in the selected period"
-                />
-              )}
-              {!leadId && (
+            {loading && !data ? (
+              <div className="schedule-occupancy" aria-hidden="true">
+                <Skeleton w="140px" />
+                <Skeleton h={8} />
+                <Skeleton w="70px" />
+              </div>
+            ) : (
+              <div className="schedule-occupancy">
                 <span>
-                  {capacity ? `${percent}% booked` : "Capacity unavailable"}
+                  {leadId ? (
+                    "Showing only this lead’s appointments"
+                  ) : (
+                    <>
+                      {hoursLabel(occupied)} / {hoursLabel(capacity)} hours
+                      booked
+                    </>
+                  )}
                 </span>
-              )}
-            </div>
+                {!leadId && (
+                  <meter
+                    min="0"
+                    max={capacity || 1}
+                    value={Math.min(occupied, capacity)}
+                    aria-label="Booked hours in the selected period"
+                  />
+                )}
+                {!leadId && (
+                  <span>
+                    {capacity ? `${percent}% booked` : "Capacity unavailable"}
+                  </span>
+                )}
+              </div>
+            )}
+            {loading && !data && (
+              <div className="calendar-summary" aria-hidden="true">
+                <Skeleton w="110px" h={16} />
+                <Skeleton w="70px" />
+                <Skeleton w="90px" />
+                <Skeleton w="120px" />
+                <Skeleton w="80px" />
+              </div>
+            )}
             {data && (
               <div
                 className="calendar-summary"
@@ -723,7 +847,8 @@ export function AppointmentsPage({
                     By tag:
                     {BOOKING_TAGS.map((t) => (
                       <span key={t.value}>
-                        <BookingTagChip tag={t.value} /> <b>{summary.tags[t.value]}</b>
+                        <BookingTagChip tag={t.value} />{" "}
+                        <b>{summary.tags[t.value]}</b>
                       </span>
                     ))}
                   </span>
@@ -731,9 +856,8 @@ export function AppointmentsPage({
               </div>
             )}
             {loading && !data ? (
-              <div className="calendar-empty" role="status">
-                <CalendarSymbol />
-                <h3>Loading your schedule…</h3>
+              <div role="status" aria-label="Loading your schedule">
+                <CalendarSkeleton mode={mode} view={view} />
               </div>
             ) : !data ? (
               <div className="calendar-empty">
@@ -1124,7 +1248,10 @@ export function AppointmentsPage({
                   <p>
                     <CalendarSymbol kind="clock" />
                     <span>
-                      {[bookedOn(selected.booked_at, timezone), bookedByLabel(selected.booked_by)]
+                      {[
+                        bookedOn(selected.booked_at, timezone),
+                        bookedByLabel(selected.booked_by),
+                      ]
                         .filter(Boolean)
                         .join(" ")}
                       <small>Booked</small>
