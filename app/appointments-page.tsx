@@ -424,7 +424,7 @@ export function AppointmentsPage({
                       .filter((r) => r.id === p.id)
                       .map((r) => r.location),
                   ),
-                ].join(" ? "),
+                ].join(" · "),
               },
             ]),
           ).values(),
