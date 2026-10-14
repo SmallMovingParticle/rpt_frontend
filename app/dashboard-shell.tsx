@@ -1004,6 +1004,7 @@ function BookingCardView({ booking, leadId, booked }: { booking: BookingCard; le
       <h3>{booking.type}<span className={`booking-state ${bucket}`}>{stateLabel(booking.state)}</span><BookingTagChip tag={booking.tag} /></h3>
       <p className="booking-when">{part({ weekday: 'long', month: 'long', day: 'numeric' })} · {range}{minutes}</p>
       {off && <p className="booking-off">{stateLabel(booking.state)} in Stride · call the patient to rebook</p>}
+      {booking.dob_check && <p className="booking-off">Check date of birth: the Sheet has {booking.dob_check.on_file}, the patient said {booking.dob_check.said} on the call. The visit was booked with the patient&rsquo;s date; correct the Sheet if it is wrong.</p>}
       <dl className="booking-facts"><dt>Case</dt><dd>{booking.case_title}</dd><dt>Clinician</dt><dd>{booking.practitioner_name}</dd><dt>Location</dt><dd>{booking.location}</dd><dt>Booked</dt><dd>{[bookedWhen, bookedByLabel(booking.booked_by)].filter(Boolean).join(' ')}</dd></dl>
       {booking.quote && <blockquote className="booking-quote">“{booking.quote}”<small>From the booking call{booking.call_offset_seconds !== null ? `, ${callMoment(booking.call_offset_seconds)}` : ''}</small></blockquote>}
       <div className="booking-actions">{booking.call_log_id !== null && <Link className="secondary" href={`/leads/${leadId}/conversations/calls?call=${booking.call_log_id}`}>View call transcript</Link>}<Link className="secondary" href={`/appointments?date=${day}`}>Open in calendar</Link></div>

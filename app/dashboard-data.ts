@@ -46,7 +46,11 @@ export type BoardBooking = {
 
 // The lead page booking card: the next visit still on the books, else the latest one.
 // quote = what the patient said just before Elliot confirmed (Elliot bookings only).
-export type BookingCard = Appointment & { quote: string | null };
+export type BookingCard = Appointment & {
+  quote: string | null;
+  // The patient confirmed a different birthday on the booking call than the Sheet has.
+  dob_check?: { on_file: string; said: string } | null;
+};
 
 // Set when the lead's phone is on the do-not-contact list. Calls and texts to
 // it never go out, whatever stage the lead is in.
