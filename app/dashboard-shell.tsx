@@ -7,7 +7,7 @@ import { BOOKING_TAGS, STATUS_BUCKETS, appointmentSummary, bookedByLabel, calend
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { FormEvent, ReactNode, useEffect, useMemo, useState } from 'react';
 import { cadenceActionDescription, cadenceCallNames, cadenceStepName, cadenceRunSummary, isCadenceStep, reorderCadenceSteps, splitCadenceRuns, type CadenceEvent } from './cadence';
-import { ActivityEntry, BookingCard, CadenceStep, CadenceVersion, emptySnapshot, Lead, LeadCreateInput, LeadDetail, LeadStage, NumberBlock, Snapshot, StaffMember } from './dashboard-data';
+import { ActivityEntry, BookingCard, CadenceStep, CadenceVersion, emptySnapshot, Lead, LeadDetail, LeadStage, NumberBlock, Snapshot, StaffMember } from './dashboard-data';
 import { AssistantDock, AssistantPage, ThemeToggle, setLeadDragData } from './assistant';
 import { ActivityKind, clientErrorMessage, clinicDateTimeValue, clinicWallTimeToIso, CLINIC_TZ, CLINIC_TZ_LABEL, defaultAfterUnblock, displayEnum, numberBlockMessage, operationalMessage, UNBLOCK_RESULT, type AfterUnblock, sourceLabel, statusTone, teamActivity, timezoneLabel } from './display';
 import type { StaffUser } from './session';
@@ -104,19 +104,6 @@ function SidebarToggleIcon({ collapsed }: { collapsed: boolean }) {
   </svg>;
 }
 
-function toUsE164(raw: string): string | null {
-  // Ten bare digits stay a US number, which is what reception types all day.
-  // An explicit country code is taken as written so the team can test on a
-  // foreign handset; the backend applies the same rule, so the two agree.
-  const trimmed = raw.trim();
-  const digits = trimmed.replace(/\D/g, '');
-  if (trimmed.startsWith('+')) {
-    return digits.length >= 11 && digits.length <= 15 ? `+${digits}` : null;
-  }
-  const local = digits.length === 11 && digits.startsWith('1') ? digits.slice(1) : digits;
-  return local.length === 10 ? `+1${local}` : null;
-}
-
 function TrashIcon() {
   return (
     <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
@@ -152,7 +139,6 @@ export function DashboardShell({ user, staff }: { user: StaffUser; staff: StaffM
   const [notice, setNotice] = useState<{ message: string; tone: 'success' | 'error' } | null>(null);
   const [selectedLocation, setSelectedLocation] = useState('All Locations');
   const [globalQuery, setGlobalQuery] = useState('');
-  const [addingLead, setAddingLead] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
   const leadId = pathname.match(/^\/leads\/([0-9a-f-]+)/i)?.[1];
 
@@ -221,37 +207,6 @@ export function DashboardShell({ user, staff }: { user: StaffUser; staff: StaffM
       showNotice(message, 'error');
       onError?.(message);
       return null;
-    }
-  }
-
-  async function addLead(payload: LeadCreateInput) {
-    try {
-      const response = await dashboardFetch('/api/dashboard/leads', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      const data = await response.json().catch(() => ({})) as Lead & { detail?: string; warning?: string };
-      if (!response.ok) throw new Error(clientErrorMessage(data.detail, 'The lead could not be created. Please try again.'));
-      const lead = data as Lead;
-      setSnapshot((current) => {
-        const exists = current.leads.some((item) => item.id === lead.id);
-        return {
-          ...current,
-          leads: [lead, ...current.leads.filter((item) => item.id !== lead.id)],
-          counts: exists ? current.counts : {
-            ...current.counts,
-            [lead.stage]: current.counts[lead.stage] + 1,
-          },
-        };
-      });
-      setDetail({ lead, events: [], messages: [], calls: [], appointments: [], history: [], activity: [] });
-      setAddingLead(false);
-      showNotice(`${lead.full_name} was saved with ${lead.is_test ? 'the 1-minute test cadence' : 'the outreach cadence'}.${data.warning ? ` ${data.warning}` : ''}`);
-      return true;
-    } catch (error) {
-      showNotice(clientErrorMessage(error instanceof Error ? error.message : '', 'The lead could not be created. Please try again.'), 'error');
-      return false;
     }
   }
 
@@ -328,16 +283,15 @@ export function DashboardShell({ user, staff }: { user: StaffUser; staff: StaffM
             <ThemeToggle /><span className={`connection ${unavailable ? 'offline' : connection}`} role="status"><i aria-hidden="true" />{unavailable ? 'Offline' : connection === 'live' ? 'Connected' : 'Connecting…'}</span><details className="account-menu"><summary className="avatar" title={user.displayName} aria-label={`Account menu for ${user.displayName}`}>{initials(user.displayName)}</summary><div><strong>{user.displayName}</strong><small>{user.role === 'super_admin' ? 'Administrator' : 'Team member'} · {user.employeeId}</small><button type="button" aria-label="Sign out" onClick={() => void signOut()}>Sign out</button></div></details>
           </div>
         </header>
-        <main className="content" id="main-content">{unavailable && !canShowData ? <OfflineState onRetry={retryConnection} /> : <>{unavailable && <div className="connection-notice" role="alert"><p><strong>Updates paused.</strong> You’re viewing the last loaded data. Reconnect before making changes.</p><button className="secondary" type="button" onClick={retryConnection}>Retry connection</button></div>}{renderPage(pathname, search.get('view'), search.get('search'), search.get('stage'), search.get('chat'), visibleSnapshot, connection === 'loading', detail, router, action, () => setAddingLead(true), resolveLeadReview, publishTemplate, user.role, staff)}</>}</main>
+        <main className="content" id="main-content">{unavailable && !canShowData ? <OfflineState onRetry={retryConnection} /> : <>{unavailable && <div className="connection-notice" role="alert"><p><strong>Updates paused.</strong> You’re viewing the last loaded data. Reconnect before making changes.</p><button className="secondary" type="button" onClick={retryConnection}>Retry connection</button></div>}{renderPage(pathname, search.get('view'), search.get('search'), search.get('stage'), search.get('chat'), visibleSnapshot, connection === 'loading', detail, router, action, resolveLeadReview, publishTemplate, user.role, staff)}</>}</main>
       </div>
       {pathname !== '/assistant' && <AssistantDock leads={snapshot.leads} currentPath={pathname} currentLeadId={leadId} />}
       {notice && <div className={`toast ${notice.tone}`} role={notice.tone === 'error' ? 'alert' : 'status'}>{notice.tone === 'error' ? '!' : '✓'} {notice.message}</div>}
-      {addingLead && <AddLeadDialog defaultLocation={selectedLocation === 'All Locations' ? locations[0] : selectedLocation} onAdd={addLead} onClose={() => setAddingLead(false)} />}
     </div>
   );
 }
 
-function renderPage(path: string, view: string | null, query: string | null, stage: string | null, chatId: string | null, snapshot: Snapshot, loading: boolean, detail: LeadDetail | null, router: ReturnType<typeof useRouter>, action: DashboardAction, openAddLead: () => void, onReviewResolved: (id: string) => void, onTemplatePublished: (id: string, body: string, name: string) => void, role: StaffUser['role'], staff: StaffMember[]) {
+function renderPage(path: string, view: string | null, query: string | null, stage: string | null, chatId: string | null, snapshot: Snapshot, loading: boolean, detail: LeadDetail | null, router: ReturnType<typeof useRouter>, action: DashboardAction, onReviewResolved: (id: string) => void, onTemplatePublished: (id: string, body: string, name: string) => void, role: StaffUser['role'], staff: StaffMember[]) {
   const requestedLeadId = path.match(/^\/leads\/([0-9a-f-]+)/i)?.[1];
   // Narrowed to a non-null LeadDetail so the lead routes below typecheck; the
   // runtime behaviour is unchanged.
@@ -345,7 +299,7 @@ function renderPage(path: string, view: string | null, query: string | null, sta
   if (requestedLeadId && !leadDetail) return <SkeletonLeadDetail path={path} />;
   if (path === '/') return <HomePage snapshot={snapshot} loading={loading} />;
   if (path === '/leads' && loading && !snapshot.leads.length) return <><PageTitle title="Lead Pipeline" subtitle="Loading the latest pipeline…" /><SkeletonBoard /></>;
-  if (path === '/leads') return <LeadsPage key={`${view}-${query}-${stage}`} snapshot={snapshot} staff={staff} mode={view === 'list' ? 'list' : 'board'} initialQuery={query ?? ''} initialStage={stage && Object.hasOwn(statusMeta, stage) ? stage as LeadStage : null} router={router} onAddLead={openAddLead} action={action} />;
+  if (path === '/leads') return <LeadsPage key={`${view}-${query}-${stage}`} snapshot={snapshot} staff={staff} mode={view === 'list' ? 'list' : 'board'} initialQuery={query ?? ''} initialStage={stage && Object.hasOwn(statusMeta, stage) ? stage as LeadStage : null} router={router} action={action} />;
   if (path === '/assistant') return <AssistantPage leads={snapshot.leads} initialChatId={chatId} />;
   if (path === '/appointments') return <AppointmentsPage snapshot={snapshot} location={snapshot.calendar_location ?? "All Locations"} action={action} initialLeadId={null} />;
   if (path === '/review') return <ReviewPage snapshot={snapshot} action={action} onResolved={onReviewResolved} loading={loading} />;
@@ -449,7 +403,7 @@ function SkeletonRows({ rows = 4 }: { rows?: number }) {
     </div>)}</div>;
 }
 
-function LeadsPage({ snapshot, staff, mode, initialQuery, initialStage, router, onAddLead, action }: { snapshot: Snapshot; staff: StaffMember[]; mode: 'board' | 'list'; initialQuery: string; initialStage: LeadStage | null; router: ReturnType<typeof useRouter>; onAddLead: () => void; action: DashboardAction }) {
+function LeadsPage({ snapshot, staff, mode, initialQuery, initialStage, router, action }: { snapshot: Snapshot; staff: StaffMember[]; mode: 'board' | 'list'; initialQuery: string; initialStage: LeadStage | null; router: ReturnType<typeof useRouter>; action: DashboardAction }) {
   const [query, setQuery] = useState(initialQuery);
   const [dragging, setDragging] = useState<string | null>(null);
   const [over, setOver] = useState<LeadStage | null>(null);
@@ -480,7 +434,7 @@ The remaining schedule is discarded and a new cadence begins from today. They wi
     (owner === 'All Owners' || (lead.owner || 'Unassigned') === owner) &&
     (!initialStage || lead.stage === initialStage)
   );
-  return <><PageTitle title="Lead Pipeline" subtitle="Select a lead to open their workspace." tools={<><div className="segmented" aria-label="Lead view"><Link className={mode === 'list' ? 'selected' : ''} href="/leads?view=list"><span className="view-icon" aria-hidden="true">☷</span>List</Link><Link className={mode === 'board' ? 'selected' : ''} href="/leads"><span className="view-icon" aria-hidden="true">▦</span>Board</Link></div><SelectMenu className="filter-control" ariaLabel="Filter leads by owner" value={owner} onChange={setOwner} options={['All Owners', ...availableOwners].map((item) => ({ value: item, label: item }))} /><label className="search-field"><span aria-hidden="true">⌕</span><input aria-label="Filter leads by name or contact details" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search leads" /></label><button className="primary" type="button" onClick={onAddLead}>Add Lead</button></>} />
+  return <><PageTitle title="Lead Pipeline" subtitle="Select a lead to open their workspace." tools={<><div className="segmented" aria-label="Lead view"><Link className={mode === 'list' ? 'selected' : ''} href="/leads?view=list"><span className="view-icon" aria-hidden="true">☷</span>List</Link><Link className={mode === 'board' ? 'selected' : ''} href="/leads"><span className="view-icon" aria-hidden="true">▦</span>Board</Link></div><SelectMenu className="filter-control" ariaLabel="Filter leads by owner" value={owner} onChange={setOwner} options={['All Owners', ...availableOwners].map((item) => ({ value: item, label: item }))} /><label className="search-field"><span aria-hidden="true">⌕</span><input aria-label="Filter leads by name or contact details" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search leads" /></label></>} />
     {initialStage && <div className="active-filter">Showing {statusMeta[initialStage].label} leads <Link href="/leads">Clear filter</Link></div>}
     {!leads.length ? <Panel><Empty title="No matching leads" body="Try another owner, location, or search term." /></Panel> : mode === 'board' ? <section className="pipeline">{(['new','cadence','attention','booked','closed'] as LeadStage[]).map((stage) => <article className={`pipeline-column ${stage} ${over === stage ? 'drop-target' : ''}`} key={stage} onDragOver={(event) => { event.preventDefault(); setOver(stage); }} onDragLeave={() => setOver((current) => current === stage ? null : current)} onDrop={(event) => { event.preventDefault(); void drop(stage); }}><header><StatusGlyph stage={stage} /><h2>{statusMeta[stage].label}</h2><small>{leads.filter((lead) => lead.stage === stage).length}</small></header><div className="lead-stack">{leads.filter((lead) => lead.stage === stage).map((lead) => <LeadCard lead={lead} key={lead.id} onOpen={() => router.push(`/leads/${lead.id}`)} dragging={dragging === lead.id} onDragStart={() => setDragging(lead.id)} onDragEnd={() => { setDragging(null); setOver(null); }} />)}{over === stage && dragging && <p className="drop-hint">{stage === 'new' ? 'Drop to restart outreach from day zero' : `Move to ${statusMeta[stage].label}`}</p>}</div></article>)}</section> :
       <Panel><DataTable heads={['Lead', 'Status', 'Owner', 'Source', 'Next step', 'Last contact', '']} >{leads.map((lead) => <tr key={lead.id} className={`row-${lead.stage} ${lead.number_block ? 'row-blocked' : ''}`}><td><strong>{lead.full_name}</strong><small>{lead.display_id}</small></td><td><span className="card-tags"><StatusBadge stage={lead.stage} paused={lead.cadence_state === 'paused'} />{lead.number_block && <BlockedTag />}</span></td><td>{lead.owner ?? 'Unassigned'}</td><td>{sourceLabel(lead.source)}</td><td>{lead.next_step ?? 'No planned action'}</td><td>{relative(lead.last_contacted_at)}</td><td><Link className="row-link" href={`/leads/${lead.id}`} aria-label={`Open ${lead.full_name}`}>→</Link></td></tr>)}</DataTable></Panel>}</>;
@@ -1433,42 +1387,3 @@ function filterSnapshot(snapshot: Snapshot, location: string): Snapshot {
   };
 }
 
-function AddLeadDialog({ defaultLocation, onAdd, onClose }: { defaultLocation: string; onAdd: (lead: LeadCreateInput) => Promise<boolean>; onClose: () => void }) {
-  const [saving, setSaving] = useState(false);
-  const [phoneError, setPhoneError] = useState('');
-  // Reception types ten digits and the +1 badge stands in for the country
-  // code. The moment someone types their own '+', that badge is wrong, so it
-  // gets out of the way rather than reading as +1 in front of +91.
-  const [phoneValue, setPhoneValue] = useState('');
-  const [leadType, setLeadType] = useState('Physical Therapy');
-  const [leadLocation, setLeadLocation] = useState(defaultLocation);
-  const [idempotencyKey] = useState(() => crypto.randomUUID());
-  async function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const data = new FormData(event.currentTarget);
-    const firstName = String(data.get('first_name') ?? '').trim();
-    const lastName = String(data.get('last_name') ?? '').trim();
-    const normalisedPhone = toUsE164(String(data.get('phone') ?? ''));
-    if (!normalisedPhone) {
-      setPhoneError('Enter a 10-digit US number (949 555 0123), or a full international number with its country code (+91 98205 37790).');
-      return;
-    }
-    setPhoneError('');
-    if (!firstName || !lastName || saving) return;
-    setSaving(true);
-    await onAdd({
-      idempotency_key: idempotencyKey,
-      first_name: firstName,
-      last_name: lastName,
-      phone: normalisedPhone,
-      email: String(data.get('email') ?? '').trim() || null,
-      date_of_birth: String(data.get('date_of_birth') ?? ''),
-      referred_by: String(data.get('referred_by') ?? '').trim() || null,
-      lead_type: String(data.get('lead_type') ?? 'Physical Therapy') as LeadCreateInput['lead_type'],
-      location: String(data.get('location') ?? defaultLocation),
-      contact_consent: true,
-    });
-    setSaving(false);
-  }
-  return <ModalShell labelId="add-lead-title" onClose={onClose}><header><div><h2 id="add-lead-title">Add lead</h2><p>Save a lead and schedule their outreach cadence. New leads are automatically assigned to you.</p></div><button className="close-button" type="button" onClick={onClose} aria-label="Close add lead dialog">×</button></header><form onSubmit={submit}><div className="form-grid"><label>First name<input name="first_name" autoComplete="given-name" autoFocus required /></label><label>Last name<input name="last_name" autoComplete="family-name" required /></label><label>Phone<span className="phone-field">{!phoneValue.trimStart().startsWith('+') && <i aria-hidden="true">+1</i>}<input name="phone" type="tel" inputMode="tel" autoComplete="tel" value={phoneValue} onChange={(event) => setPhoneValue(event.target.value)} placeholder="949 555 0123 or +91 98205 37790" maxLength={18} aria-invalid={Boolean(phoneError)} required /></span>{phoneError && <small className="field-error">{phoneError}</small>}</label><label>Email<input name="email" type="email" autoComplete="email" placeholder="name@example.com" /></label><label>Date of birth<input name="date_of_birth" type="date" autoComplete="bday" required /></label><label>Who referred this lead?<input name="referred_by" placeholder="Name or organization" /></label><div className="form-select-field form-field-full"><span>Lead type</span><SelectMenu name="lead_type" ariaLabel="Lead type" value={leadType} onChange={setLeadType} options={['Physical Therapy','Wellness'].map((item) => ({ value: item, label: item }))} /></div><div className="form-select-field form-field-full"><span>Location</span><SelectMenu name="location" ariaLabel="Lead location" value={leadLocation} onChange={setLeadLocation} options={locations.map((item) => ({ value: item, label: item }))} /></div></div><footer><button className="secondary" type="button" onClick={onClose} disabled={saving}>Cancel</button><button className="primary" type="submit" disabled={saving}>{saving ? 'Saving…' : 'Add lead'}</button></footer></form></ModalShell>;
-}
